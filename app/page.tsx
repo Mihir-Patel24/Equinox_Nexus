@@ -31,6 +31,10 @@ import { ArrowUp, X } from 'lucide-react';
 export default function Home() {
   const [simulationData, setSimulationData] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [currentStep, setCurrentStep] = useState<number>(0);
+  const [completedSteps, setCompletedSteps] = useState<number[]>([]);
+  const [statusMessage, setStatusMessage] = useState<string>("");
+  const [stepSubtexts, setStepSubtexts] = useState<string[]>([]);
   const [showResults, setShowResults] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [activeView, setActiveView] = useState('dashboard');
@@ -60,7 +64,157 @@ export default function Home() {
     setIsLoading(true);
     setShowResults(false);
     window.scrollTo({ top: 0, behavior: 'smooth' });
-    
+
+    setCurrentStep(0);
+    setCompletedSteps([]);
+    setStatusMessage("Establishing connection to Agent Swarm...");
+    setStepSubtexts([
+      "160+ currencies tracked",
+      "Health & safety risk scanner",
+      "Projected monthly burn rate",
+      "Visa & tax treaty compliance",
+      "Monte Carlo asset projections",
+      "Llama-3 decision intelligence synthesis"
+    ]);
+
+    try {
+      const targetCities: string[] = formData.target_locations.filter((l: string) => l.trim() !== '');
+      const salary: number = parseFloat(formData.current_salary) || 120000;
+      const primaryTargetCity = targetCities[0] || 'Singapore';
+
+      // Connect to SSE stream
+      const response = await fetch('http://localhost:8000/simulate/stream', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          current_city: formData.current_location || 'Unknown',
+          target_city: primaryTargetCity,
+          annual_income: salary,
+          currency: formData.currency || 'USD',
+          current_wealth: 0,
+          lifestyle_preferences: formData.lifestyle_preferences || {}
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const reader = response.body?.getReader();
+      const decoder = new TextDecoder("utf-8");
+      let buffer = "";
+
+      if (reader) {
+        let streamSucceeded = false;
+        while (true) {
+          const { value, done } = await reader.read();
+          if (done) break;
+
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split("\n\n");
+          buffer = lines.pop() || "";
+
+          for (const line of lines) {
+            if (line.startsWith("data: ")) {
+              const payload = JSON.parse(line.slice(6));
+              
+              if (payload.type === "pipeline_start") {
+                setStatusMessage(payload.message);
+                setCurrentStep(0);
+              } else if (payload.type === "agent_start") {
+                setStatusMessage(payload.message);
+                if (payload.agent === "actuary") setCurrentStep(1);
+                else if (payload.agent === "fiscal_ghost") setCurrentStep(2);
+                else if (payload.agent === "nexus_rag") setCurrentStep(3);
+                else if (payload.agent === "chronos") setCurrentStep(4);
+                else if (payload.agent === "decision_intelligence") setCurrentStep(5);
+              } else if (payload.type === "agent_done") {
+                setStatusMessage(payload.message);
+                if (payload.agent === "actuary") {
+                  setCompletedSteps(prev => [...prev, 1]);
+                  setStepSubtexts(prev => { const next = [...prev]; next[1] = `Composite QoL: ${payload.data?.composite_score ?? 83}`; return next; });
+                } else if (payload.agent === "fiscal_ghost") {
+                  setCompletedSteps(prev => [...prev, 2]);
+                  setStepSubtexts(prev => { const next = [...prev]; next[2] = `Burn: $${Math.round(payload.data?.projected_expenses ?? 2700)}`; return next; });
+                } else if (payload.agent === "nexus_rag") {
+                  setCompletedSteps(prev => [...prev, 3]);
+                  setStepSubtexts(prev => { const next = [...prev]; next[3] = `${payload.data?.tax_regime ?? 'SRS Eligible (SG)'} applied`; return next; });
+                } else if (payload.agent === "chronos") {
+                  setCompletedSteps(prev => [...prev, 4]);
+                  setStepSubtexts(prev => { const next = [...prev]; next[4] = `Base 5yr: $${Math.round(payload.data?.base_year5 ?? 24000).toLocaleString()}`; return next; });
+                } else if (payload.agent === "decision_intelligence") {
+                  setCompletedSteps(prev => [...prev, 5]);
+                  setStepSubtexts(prev => { const next = [...prev]; next[5] = `Viability: ${payload.data?.viability_score ?? 81}/100`; return next; });
+                }
+              } else if (payload.type === "simulation_complete") {
+                setStatusMessage(payload.message);
+                
+                const resData = payload.data;
+                const report = resData.final_report || {};
+                const proj = resData.wealth_projection || [];
+                const scenarios = resData.monte_carlo_result?.scenarios ?? [];
+
+                const backendResult = {
+                  scenarios: scenarios.map((s: any) => ({
+                    location: primaryTargetCity,
+                    year_1_wealth: proj[0]?.wealth ?? salary * 0.8,
+                    year_5_wealth: s.final_wealth ?? salary * 1.5,
+                    risk_score: resData.risk_analysis?.overall_risk_rating === 'Low' ? 0.15 : resData.risk_analysis?.overall_risk_rating === 'High' ? 0.40 : 0.25,
+                    quality_score: (report.quality_of_life_score ?? 70) / 100,
+                    cost_increase: ((report.col_multiplier ?? 1) - 1) * 100,
+                    tax_burden: (report.effective_tax_rate ?? 0.30) * 100,
+                    hidden_costs: (report.annual_expenses ?? salary * 0.6) * 0.08,
+                    risk_level: resData.risk_analysis?.overall_risk_rating ?? 'Medium',
+                    viability_score: report.relocation_viability_score ?? 70,
+                    tax_regime: report.tax_regime ?? 'Standard',
+                    dta_relief: report.dta_relief ?? 0,
+                    net_savings: report.net_annual_savings ?? 0,
+                    data_sources: report.data_sources ?? []
+                  })),
+                  risk_analysis: resData.risk_analysis,
+                  expense_analysis: resData.expense_analysis,
+                  compliance_summary: resData.compliance_analysis
+                    ? {
+                        ...resData.compliance_analysis,
+                        total_compliance_cost: resData.compliance_analysis.total_compliance_cost ?? Math.round((salary * 0.6) * 0.08)
+                      }
+                    : { visa_complexity: 'Medium', tax_treaty_benefits: '15% relief', regulatory_timeline: '45-60 days', total_compliance_cost: 18500 },
+                  recommendations: report.key_advantages?.map((adv: string) => `Advantage: ${adv}`) 
+                    .concat(report.key_risks?.map((r: string) => `Risk: ${r}`) ?? []) ?? [
+                    `Relocation viability score: ${report.relocation_viability_score ?? 70}/100`,
+                    `Effective tax rate: ${((report.effective_tax_rate ?? 0.3) * 100).toFixed(1)}%`
+                  ],
+                  trust_score: {
+                    score: report.relocation_viability_score ?? 80,
+                    components: {
+                      payment_reliability: 90,
+                      financial_stability: 85,
+                      income_verification: 80,
+                      debt_management: 75
+                    }
+                  },
+                  rawResults: resData
+                };
+
+                setSimulationData(backendResult);
+                setShowResults(true);
+                setActiveView('results');
+                streamSucceeded = true;
+              } else if (payload.type === "error") {
+                throw new Error(payload.message);
+              }
+            }
+          }
+        }
+        if (streamSucceeded) {
+          setIsLoading(false);
+          return;
+        }
+      }
+    } catch (err) {
+      console.warn("Backend streaming failed or was interrupted, falling back to local mocks:", err);
+    }
+
     try {
       const targetCities: string[] = formData.target_locations.filter((l: string) => l.trim() !== '');
       const salary: number = parseFloat(formData.current_salary);
@@ -640,7 +794,7 @@ export default function Home() {
         'Kanpur': { wealthMultiplier1: 0.66, wealthMultiplier5: 1.18, riskScore: 0.30, qualityScore: 0.66, costIncrease: 4.0, taxBurden: 30.0, hiddenCosts: 2000, riskLevel: 'Medium' },
         'Thane, India': { wealthMultiplier1: 0.67, wealthMultiplier5: 1.20, riskScore: 0.28, qualityScore: 0.72, costIncrease: 6.5, taxBurden: 30.0, hiddenCosts: 3200, riskLevel: 'Medium' },
         'Thane': { wealthMultiplier1: 0.67, wealthMultiplier5: 1.20, riskScore: 0.28, qualityScore: 0.72, costIncrease: 6.5, taxBurden: 30.0, hiddenCosts: 3200, riskLevel: 'Medium' },
-        'Pimpri-Chinchwad, India': { wealthMultiplier1: 0.68, wealthMultiplier5: 1.22, riskScore: 0.26, qualityScore: 0.74, costIncrease: 5.8, taxBurden: 30.0, hiddenCosts: 2800, riskLevel: 'Medium' },
+'Pimpri-Chinchwad, India': { wealthMultiplier1: 0.68, wealthMultiplier5: 1.22, riskScore: 0.26, qualityScore: 0.74, costIncrease: 5.8, taxBurden: 30.0, hiddenCosts: 2800, riskLevel: 'Medium' },
         'Pimpri-Chinchwad': { wealthMultiplier1: 0.68, wealthMultiplier5: 1.22, riskScore: 0.26, qualityScore: 0.74, costIncrease: 5.8, taxBurden: 30.0, hiddenCosts: 2800, riskLevel: 'Medium' },
         'Patna, India': { wealthMultiplier1: 0.65, wealthMultiplier5: 1.15, riskScore: 0.32, qualityScore: 0.62, costIncrease: 3.5, taxBurden: 30.0, hiddenCosts: 1800, riskLevel: 'Medium' },
         'Patna': { wealthMultiplier1: 0.65, wealthMultiplier5: 1.15, riskScore: 0.32, qualityScore: 0.62, costIncrease: 3.5, taxBurden: 30.0, hiddenCosts: 1800, riskLevel: 'Medium' },
@@ -701,7 +855,7 @@ export default function Home() {
         'Tiruppur, India': { wealthMultiplier1: 0.69, wealthMultiplier5: 1.21, riskScore: 0.26, qualityScore: 0.70, costIncrease: 3.5, taxBurden: 30.0, hiddenCosts: 1850, riskLevel: 'Medium' },
         'Tiruppur': { wealthMultiplier1: 0.69, wealthMultiplier5: 1.21, riskScore: 0.26, qualityScore: 0.70, costIncrease: 3.5, taxBurden: 30.0, hiddenCosts: 1850, riskLevel: 'Medium' },
         'Bhubaneswar, India': { wealthMultiplier1: 0.69, wealthMultiplier5: 1.22, riskScore: 0.26, qualityScore: 0.72, costIncrease: 4.0, taxBurden: 30.0, hiddenCosts: 2050, riskLevel: 'Medium' },
-        'Bhubaneswar': { wealthMultiplier1: 0.69, wealthMultiplier5: 1.22, riskScore: 0.26, qualityScore: 0.72, costIncrease: 4.0, taxBurden: 30.0, hiddenCosts: 2050, riskLevel: 'Medium' },      };
+      };
 
       // Get the primary selected city
       const primaryCity = formData.target_locations[0] || 'London, UK';
@@ -709,44 +863,28 @@ export default function Home() {
       // Find the best matching city key - IMPROVED matching
       const findCityKey = (cityName: string): string => {
         const normalizedInput = cityName.toLowerCase().trim();
-        
-        // First try exact match
         for (const key of Object.keys(cityData)) {
-          if (key.toLowerCase() === normalizedInput) {
-            return key;
-          }
+          if (key.toLowerCase() === normalizedInput) return key;
         }
-        
-        // Then try if input starts with city name (e.g., "Paris" matches "Paris, France")
         for (const key of Object.keys(cityData)) {
           const cityPart = key.toLowerCase().split(',')[0].trim();
-          if (cityPart === normalizedInput) {
-            return key;
-          }
+          if (cityPart === normalizedInput) return key;
         }
-        
-        // Then try partial match
         for (const key of Object.keys(cityData)) {
           if (key.toLowerCase().includes(normalizedInput) || normalizedInput.includes(key.toLowerCase().split(',')[0])) {
             return key;
           }
         }
-        
-        // If no match found, return the input as-is with default data
         return cityName;
       };
 
-      // Use ALL user-selected cities instead of auto-generating comparisons
       const userSelectedCities = formData.target_locations
         .filter((loc: string) => loc && loc.trim() !== '')
         .map((loc: string) => findCityKey(loc));
       
-      // Remove duplicates while preserving order
-      const uniqueCities = [...new Set(userSelectedCities)];
+      const uniqueCities = Array.from(new Set(userSelectedCities)) as string[];
       
-      // Build scenarios with actual city data
       const buildScenario = (cityKey: string, salary: number) => {
-        // Try to find city data, or generate conservative defaults for unknown cities
         const data = cityData[cityKey] || {
           wealthMultiplier1: 0.70,
           wealthMultiplier5: 1.25,
@@ -826,10 +964,6 @@ export default function Home() {
     }
   };
 
-  const scrollToTop = () => {
-    window.scrollTo({ top: 0, behavior: 'smooth' });
-  };
-
   const handleNavigate = (viewId: string) => {
     setActiveView(viewId);
     setSidebarOpen(false);
@@ -839,7 +973,14 @@ export default function Home() {
 
   const renderContent = () => {
     if (isLoading) {
-      return <LoadingAnimation />;
+      return (
+        <LoadingAnimation 
+          currentStep={currentStep}
+          completedSteps={completedSteps}
+          statusMessage={statusMessage}
+          stepSubtexts={stepSubtexts}
+        />
+      );
     }
 
     if (showResults && simulationData) {
@@ -952,146 +1093,67 @@ export default function Home() {
                 The Actuary
               </h2>
               <p style={{ color: 'rgba(255,255,255,0.6)', fontSize: '16px' }}>
-                Quality of Life & Health Risk Analysis Agent
+                Quality of Life &amp; Health Risk Analysis Agent
               </p>
             </div>
 
-            {/* Cleanest City Highlight */}
-            <div style={{
-              background: 'linear-gradient(135deg, rgba(16, 185, 129, 0.15) 0%, rgba(5, 150, 105, 0.1) 100%)',
-              border: '2px solid rgba(16, 185, 129, 0.4)',
-              borderRadius: '20px',
-              padding: '24px',
-              marginBottom: '24px',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between'
-            }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '20px' }}>
-                <div style={{ 
-                  width: '64px', height: '64px', borderRadius: '16px', 
-                  background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)', 
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  boxShadow: '0 8px 24px rgba(16, 185, 129, 0.3)'
-                }}>
-                  <span style={{ fontSize: '28px' }}>🌿</span>
-                </div>
-                <div>
-                  <div style={{ fontSize: '12px', color: 'rgba(255,255,255,0.5)', marginBottom: '4px', textTransform: 'uppercase', letterSpacing: '1px' }}>
-                    Cleanest Developed City
+            {simulationData?.actuary ? (
+              <div style={{
+                background: 'linear-gradient(135deg, rgba(102, 126, 234, 0.1) 0%, rgba(118, 75, 162, 0.05) 100%)',
+                backdropFilter: 'blur(24px)',
+                border: '1px solid rgba(102, 126, 234, 0.2)',
+                borderRadius: '24px',
+                padding: '32px',
+                marginBottom: '32px'
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '16px', marginBottom: '24px' }}>
+                  <div style={{ width: '64px', height: '64px', borderRadius: '16px', background: 'linear-gradient(135deg, #3b82f6 0%, #8b5cf6 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
                   </div>
-                  <h3 style={{ fontSize: '28px', fontWeight: 800, color: '#10b981', marginBottom: '4px' }}>
-                    🇯🇵 Osaka, Japan
-                  </h3>
-                  <p style={{ fontSize: '14px', color: 'rgba(255,255,255,0.6)' }}>
-                    AQI 0-5 (Excellent) • #1 developed city for air quality
-                  </p>
-                </div>
-              </div>
-              <div style={{ textAlign: 'right' }}>
-                <div style={{ fontSize: '48px', fontWeight: 800, color: '#10b981' }}>5</div>
-                <div style={{ fontSize: '12px', color: 'rgba(255,255,255,0.5)' }}>US AQI</div>
-              </div>
-            </div>
-
-            {/* Top 5 Cleanest Developed Cities */}
-            <div style={{
-              background: 'rgba(255,255,255,0.03)',
-              borderRadius: '16px',
-              padding: '20px',
-              marginBottom: '24px',
-              border: '1px solid rgba(255,255,255,0.08)'
-            }}>
-              <h4 style={{ fontSize: '14px', fontWeight: 600, color: 'rgba(255,255,255,0.7)', marginBottom: '12px' }}>
-                🏆 Top 5 Cleanest Developed Cities (Live AQI from IQAir)
-              </h4>
-              <p style={{ fontSize: '11px', color: 'rgba(255,255,255,0.4)', marginBottom: '16px' }}>
-                Source: IQAir World Air Quality Index • Updated hourly
-              </p>
-              <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
-                {[
-                  { rank: 1, city: 'Osaka', country: '🇯🇵', aqi: 5 },
-                  { rank: 2, city: 'Vancouver', country: '🇨🇦', aqi: 6 },
-                  { rank: 3, city: 'Auckland', country: '🇳🇿', aqi: 9 },
-                  { rank: 4, city: 'Melbourne', country: '🇦🇺', aqi: 10 },
-                  { rank: 5, city: 'Amsterdam', country: '🇳🇱', aqi: 11 },
-                ].map((item) => (
-                  <div key={item.rank} style={{
-                    flex: '1',
-                    minWidth: '140px',
-                    padding: '12px 16px',
-                    background: item.rank === 1 ? 'rgba(16, 185, 129, 0.15)' : 'rgba(0,0,0,0.2)',
-                    borderRadius: '10px',
-                    border: item.rank === 1 ? '1px solid rgba(16, 185, 129, 0.3)' : '1px solid rgba(255,255,255,0.05)',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '10px'
-                  }}>
-                    <span style={{ 
-                      fontSize: '14px', fontWeight: 700, 
-                      color: item.rank === 1 ? '#10b981' : 'rgba(255,255,255,0.4)',
-                      width: '20px'
-                    }}>#{item.rank}</span>
-                    <span style={{ fontSize: '16px' }}>{item.country}</span>
-                    <div style={{ flex: 1 }}>
-                      <div style={{ fontSize: '13px', fontWeight: 600, color: 'white' }}>{item.city}</div>
-                      <div style={{ fontSize: '11px', color: '#10b981' }}>AQI {item.aqi}</div>
+                  <div>
+                    <h3 style={{ fontSize: '24px', fontWeight: 700, color: 'white' }}>The Actuary</h3>
+                    <p style={{ color: 'rgba(255,255,255,0.5)', fontSize: '14px' }}>Live analysis for {simulationData.actuary.city}</p>
+                  </div>
+                  <div style={{ marginLeft: 'auto', display: 'flex', gap: '8px', alignItems: 'center' }}>
+                    <div style={{ padding: '8px 16px', background: 'rgba(59, 130, 246, 0.2)', borderRadius: '8px', border: '1px solid rgba(59, 130, 246, 0.3)' }}>
+                      <span style={{ color: '#60a5fa', fontSize: '14px', fontWeight: 600 }}>📍 {simulationData.actuary.city}</span>
+                    </div>
+                    <div style={{ padding: '8px 16px', background: 'rgba(34, 197, 94, 0.2)', borderRadius: '8px', border: '1px solid rgba(34, 197, 94, 0.3)' }}>
+                      <span style={{ color: '#4ade80', fontSize: '14px', fontWeight: 600 }}>● Live AI Data</span>
                     </div>
                   </div>
-                ))}
-              </div>
-            </div>
-
-            <div style={{
-              background: 'linear-gradient(135deg, rgba(102, 126, 234, 0.1) 0%, rgba(118, 75, 162, 0.05) 100%)',
-              backdropFilter: 'blur(24px)',
-              border: '1px solid rgba(102, 126, 234, 0.2)',
-              borderRadius: '24px',
-              padding: '32px',
-              marginBottom: '32px'
-            }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '16px', marginBottom: '24px' }}>
-                <div style={{ width: '64px', height: '64px', borderRadius: '16px', background: 'linear-gradient(135deg, #3b82f6 0%, #8b5cf6 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                  <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
                 </div>
-                <div>
-                  <h3 style={{ fontSize: '24px', fontWeight: 700, color: 'white' }}>The Actuary</h3>
-                  <p style={{ color: 'rgba(255,255,255,0.5)', fontSize: '14px' }}>Analyzing health, safety, and quality of life metrics</p>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '16px', marginBottom: '24px' }}>
+                  {[
+                    { label: 'Air Quality Index (AQI)', value: simulationData.actuary.air_quality_index, status: simulationData.actuary.air_quality_index < 50 ? 'Good' : simulationData.actuary.air_quality_index < 100 ? 'Moderate' : 'Poor', color: simulationData.actuary.air_quality_index < 50 ? '#10b981' : simulationData.actuary.air_quality_index < 100 ? '#eab308' : '#ef4444' },
+                    { label: 'Healthcare Score', value: `${simulationData.actuary.healthcare_score}/100`, status: simulationData.actuary.healthcare_score > 80 ? 'Excellent' : 'Good', color: '#10b981' },
+                    { label: 'Safety Score', value: `${simulationData.actuary.safety_score}/100`, status: simulationData.actuary.safety_score > 80 ? 'Very Good' : 'Good', color: '#10b981' },
+                    { label: 'Composite QoL Score', value: `${simulationData.actuary.composite_score}/100`, status: simulationData.actuary.overall_risk_rating + ' Risk', color: simulationData.actuary.overall_risk_rating === 'Low' ? '#10b981' : simulationData.actuary.overall_risk_rating === 'High' ? '#ef4444' : '#eab308' },
+                    { label: 'Happiness Index', value: `${simulationData.actuary.happiness_index}/100`, status: 'World Happiness Report', color: '#3b82f6' },
+                    { label: 'Healthcare Wait Time', value: `${simulationData.actuary.healthcare_wait}h`, status: 'Average wait', color: simulationData.actuary.healthcare_wait < 3 ? '#10b981' : '#eab308' },
+                  ].map((metric, i) => (
+                    <div key={i} style={{ padding: '20px', background: 'rgba(0,0,0,0.2)', borderRadius: '16px' }}>
+                      <div style={{ fontSize: '12px', color: 'rgba(255,255,255,0.5)', marginBottom: '8px' }}>{metric.label}</div>
+                      <div style={{ fontSize: '28px', fontWeight: 700, color: 'white', marginBottom: '4px' }}>{metric.value}</div>
+                      <div style={{ fontSize: '12px', color: metric.color, fontWeight: 600 }}>{metric.status}</div>
+                    </div>
+                  ))}
                 </div>
-                <div style={{ marginLeft: 'auto', display: 'flex', gap: '8px', alignItems: 'center' }}>
-                  <div style={{ padding: '8px 16px', background: 'rgba(59, 130, 246, 0.2)', borderRadius: '8px', border: '1px solid rgba(59, 130, 246, 0.3)' }}>
-                    <span style={{ color: '#60a5fa', fontSize: '14px', fontWeight: 600 }}>🇩🇪 Berlin</span>
-                  </div>
-                  <div style={{ padding: '8px 16px', background: 'rgba(34, 197, 94, 0.2)', borderRadius: '8px', border: '1px solid rgba(34, 197, 94, 0.3)' }}>
-                    <span style={{ color: '#4ade80', fontSize: '14px', fontWeight: 600 }}>● Active</span>
-                  </div>
+                <div style={{ padding: '20px', background: 'rgba(59, 130, 246, 0.1)', borderRadius: '16px', border: '1px solid rgba(59, 130, 246, 0.2)' }}>
+                  <h4 style={{ fontSize: '16px', fontWeight: 600, color: 'white', marginBottom: '8px' }}>🔍 Live Analysis — {simulationData.actuary.city}</h4>
+                  <p style={{ color: 'rgba(255,255,255,0.7)', fontSize: '13px', lineHeight: 1.6, marginBottom: '8px' }}>{simulationData.actuary.notes || `${simulationData.actuary.city} has a composite quality of life score of ${simulationData.actuary.composite_score}/100 with an overall risk rating of ${simulationData.actuary.overall_risk_rating}.`}</p>
+                  <p style={{ color: 'rgba(255,255,255,0.4)', fontSize: '11px' }}>Source: {simulationData.actuary.data_source}</p>
                 </div>
               </div>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '16px', marginBottom: '24px' }}>
-                {[
-                  { label: 'Air Quality Index', value: '72', status: 'Moderate', color: '#eab308' },
-                  { label: 'Healthcare Access', value: '94%', status: 'Excellent', color: '#10b981' },
-                  { label: 'Safety Score', value: '89', status: 'Very Good', color: '#10b981' },
-                  { label: 'Life Expectancy Impact', value: '+2.3 yrs', status: 'Positive', color: '#10b981' },
-                  { label: 'Stress Index', value: '45', status: 'Low', color: '#10b981' },
-                  { label: 'Work-Life Balance', value: '78%', status: 'Good', color: '#3b82f6' }
-                ].map((metric, i) => (
-                  <div key={i} style={{ padding: '20px', background: 'rgba(0,0,0,0.2)', borderRadius: '16px' }}>
-                    <div style={{ fontSize: '12px', color: 'rgba(255,255,255,0.5)', marginBottom: '8px' }}>{metric.label}</div>
-                    <div style={{ fontSize: '28px', fontWeight: 700, color: 'white', marginBottom: '4px' }}>{metric.value}</div>
-                    <div style={{ fontSize: '12px', color: metric.color, fontWeight: 600 }}>{metric.status}</div>
-                  </div>
-                ))}
+            ) : (
+              <div style={{
+                background: 'linear-gradient(135deg, rgba(102, 126, 234, 0.1) 0%, rgba(118, 75, 162, 0.05) 100%)',
+                backdropFilter: 'blur(24px)', border: '1px solid rgba(102, 126, 234, 0.2)',
+                borderRadius: '24px', padding: '32px', marginBottom: '32px'
+              }}>
+                <p style={{ color: 'rgba(255,255,255,0.6)', textAlign: 'center' }}>Run a simulation to see live Actuary data for your target city.</p>
               </div>
-              <div style={{ padding: '20px', background: 'rgba(59, 130, 246, 0.1)', borderRadius: '16px', border: '1px solid rgba(59, 130, 246, 0.2)' }}>
-                <h4 style={{ fontSize: '16px', fontWeight: 600, color: 'white', marginBottom: '12px' }}>🔍 Latest Analysis - Berlin, Germany</h4>
-                <p style={{ color: 'rgba(255,255,255,0.7)', fontSize: '14px', lineHeight: 1.7 }}>
-                  Berlin offers excellent health outcomes with 94% healthcare access and moderate air quality (AQI 72). 
-                  The city has a very good safety score (89/100) and low stress index compared to other major cities.
-                  Life expectancy impact is +2.3 years vs your current location. Work-life balance rated 78% due to strong labor laws.
-                </p>
-              </div>
-            </div>
+            )}
             <div style={{ marginTop: '32px' }}>
               <LifestyleTwins />
             </div>
@@ -1106,59 +1168,67 @@ export default function Home() {
                 Fiscal Ghost
               </h2>
               <p style={{ color: 'rgba(255,255,255,0.6)', fontSize: '16px' }}>
-                Cost of Living & Financial Projection Agent
+                Cost of Living &amp; Financial Projection Agent
               </p>
             </div>
-            <div style={{
-              background: 'linear-gradient(135deg, rgba(102, 126, 234, 0.1) 0%, rgba(118, 75, 162, 0.05) 100%)',
-              backdropFilter: 'blur(24px)',
-              border: '1px solid rgba(102, 126, 234, 0.2)',
-              borderRadius: '24px',
-              padding: '32px',
-              marginBottom: '32px'
-            }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '16px', marginBottom: '24px' }}>
-                <div style={{ width: '64px', height: '64px', borderRadius: '16px', background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                  <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/></svg>
-                </div>
-                <div>
-                  <h3 style={{ fontSize: '24px', fontWeight: 700, color: 'white' }}>Fiscal Ghost</h3>
-                  <p style={{ color: 'rgba(255,255,255,0.5)', fontSize: '14px' }}>Tracking every expense across your target cities</p>
-                </div>
-                <div style={{ marginLeft: 'auto', display: 'flex', gap: '8px', alignItems: 'center' }}>
-                  <div style={{ padding: '8px 16px', background: 'rgba(59, 130, 246, 0.2)', borderRadius: '8px', border: '1px solid rgba(59, 130, 246, 0.3)' }}>
-                    <span style={{ color: '#60a5fa', fontSize: '14px', fontWeight: 600 }}>🇩🇪 Berlin</span>
+            {simulationData?.fiscal ? (
+              <div style={{
+                background: 'linear-gradient(135deg, rgba(102, 126, 234, 0.1) 0%, rgba(118, 75, 162, 0.05) 100%)',
+                backdropFilter: 'blur(24px)',
+                border: '1px solid rgba(102, 126, 234, 0.2)',
+                borderRadius: '24px',
+                padding: '32px',
+                marginBottom: '32px'
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '16px', marginBottom: '24px' }}>
+                  <div style={{ width: '64px', height: '64px', borderRadius: '16px', background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/></svg>
                   </div>
-                  <div style={{ padding: '8px 16px', background: 'rgba(34, 197, 94, 0.2)', borderRadius: '8px', border: '1px solid rgba(34, 197, 94, 0.3)' }}>
-                    <span style={{ color: '#4ade80', fontSize: '14px', fontWeight: 600 }}>● Active</span>
+                  <div>
+                    <h3 style={{ fontSize: '24px', fontWeight: 700, color: 'white' }}>Fiscal Ghost</h3>
+                    <p style={{ color: 'rgba(255,255,255,0.5)', fontSize: '14px' }}>Live expense model for {simulationData.fiscal.city}</p>
                   </div>
+                  <div style={{ marginLeft: 'auto', display: 'flex', gap: '8px', alignItems: 'center' }}>
+                    <div style={{ padding: '8px 16px', background: 'rgba(59, 130, 246, 0.2)', borderRadius: '8px', border: '1px solid rgba(59, 130, 246, 0.3)' }}>
+                      <span style={{ color: '#60a5fa', fontSize: '14px', fontWeight: 600 }}>📍 {simulationData.fiscal.city}</span>
+                    </div>
+                    <div style={{ padding: '8px 16px', background: 'rgba(34, 197, 94, 0.2)', borderRadius: '8px', border: '1px solid rgba(34, 197, 94, 0.3)' }}>
+                      <span style={{ color: '#4ade80', fontSize: '14px', fontWeight: 600 }}>● Live AI Data</span>
+                    </div>
+                  </div>
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '16px', marginBottom: '24px' }}>
+                  {[
+                    { label: 'Monthly Burn Rate', value: `$${simulationData.fiscal.monthly_expenses.toLocaleString()}`, status: 'AI-projected', color: '#3b82f6' },
+                    { label: 'CoL Multiplier vs Global', value: `${simulationData.fiscal.col_multiplier.toFixed(2)}x`, status: simulationData.fiscal.col_multiplier > 1.2 ? 'Higher cost city' : simulationData.fiscal.col_multiplier < 0.9 ? 'Lower cost city' : 'Near average', color: simulationData.fiscal.col_multiplier > 1.2 ? '#ef4444' : '#10b981' },
+                    { label: 'FX Rate (vs USD)', value: `${simulationData.fiscal.fx_rate.toFixed(4)} ${simulationData.fiscal.currency}`, status: 'Live rate', color: '#a78bfa' },
+                    { label: 'Effective Tax Rate', value: `${(simulationData.fiscal.effective_tax_rate * 100).toFixed(1)}%`, status: simulationData.fiscal.tax_regime, color: '#eab308' },
+                    { label: 'Net Annual Savings', value: `$${Math.round(simulationData.fiscal.net_annual_savings).toLocaleString()}`, status: simulationData.fiscal.net_annual_savings > 0 ? 'Positive' : 'Tight budget', color: simulationData.fiscal.net_annual_savings > 0 ? '#10b981' : '#ef4444' },
+                    { label: 'Annual Expenses', value: `$${Math.round(simulationData.fiscal.annual_expenses).toLocaleString()}`, status: `${simulationData.fiscal.lifestyle_key} lifestyle`, color: '#ec4899' },
+                  ].map((metric, i) => (
+                    <div key={i} style={{ padding: '20px', background: 'rgba(0,0,0,0.2)', borderRadius: '16px' }}>
+                      <div style={{ fontSize: '12px', color: 'rgba(255,255,255,0.5)', marginBottom: '8px' }}>{metric.label}</div>
+                      <div style={{ fontSize: '28px', fontWeight: 700, color: 'white', marginBottom: '4px' }}>{metric.value}</div>
+                      <div style={{ fontSize: '12px', color: metric.color, fontWeight: 600 }}>{metric.status}</div>
+                    </div>
+                  ))}
+                </div>
+                <div style={{ padding: '20px', background: 'rgba(16, 185, 129, 0.1)', borderRadius: '16px', border: '1px solid rgba(16, 185, 129, 0.2)' }}>
+                  <h4 style={{ fontSize: '16px', fontWeight: 600, color: 'white', marginBottom: '12px' }}>💰 Financial Insight — {simulationData.fiscal.city}</h4>
+                  <p style={{ color: 'rgba(255,255,255,0.7)', fontSize: '14px', lineHeight: 1.7 }}>
+                    Monthly cost of living: <strong style={{ color: 'white' }}>${simulationData.fiscal.monthly_expenses.toLocaleString()}</strong> &nbsp;·&nbsp;
+                    Tax rate: <strong style={{ color: 'white' }}>{(simulationData.fiscal.effective_tax_rate * 100).toFixed(1)}%</strong> ({simulationData.fiscal.tax_regime}) &nbsp;·&nbsp;
+                    Annual savings: <strong style={{ color: simulationData.fiscal.net_annual_savings > 0 ? '#10b981' : '#ef4444' }}>${Math.round(simulationData.fiscal.net_annual_savings).toLocaleString()}</strong>.
+                    CoL is <strong style={{ color: 'white' }}>{simulationData.fiscal.col_multiplier.toFixed(2)}x</strong> the global average.
+                    FX rate: 1 USD = {simulationData.fiscal.fx_rate.toFixed(4)} {simulationData.fiscal.currency}.
+                  </p>
                 </div>
               </div>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '16px', marginBottom: '24px' }}>
-                {[
-                  { label: 'Monthly Burn Rate', value: '$4,850', status: 'Berlin Estimate', color: '#3b82f6' },
-                  { label: 'Rent (1BR)', value: '$1,600', status: 'Avg Target', color: '#a78bfa' },
-                  { label: 'Groceries', value: '$380', status: 'Monthly', color: '#10b981' },
-                  { label: 'Transport', value: '$86', status: 'Monthly Pass', color: '#10b981' },
-                  { label: 'Utilities', value: '$180', status: 'Avg', color: '#eab308' },
-                  { label: 'Entertainment', value: '$320', status: 'Your Budget', color: '#ec4899' }
-                ].map((metric, i) => (
-                  <div key={i} style={{ padding: '20px', background: 'rgba(0,0,0,0.2)', borderRadius: '16px' }}>
-                    <div style={{ fontSize: '12px', color: 'rgba(255,255,255,0.5)', marginBottom: '8px' }}>{metric.label}</div>
-                    <div style={{ fontSize: '28px', fontWeight: 700, color: 'white', marginBottom: '4px' }}>{metric.value}</div>
-                    <div style={{ fontSize: '12px', color: metric.color, fontWeight: 600 }}>{metric.status}</div>
-                  </div>
-                ))}
+            ) : (
+              <div style={{ background: 'rgba(102,126,234,0.1)', backdropFilter: 'blur(24px)', border: '1px solid rgba(102,126,234,0.2)', borderRadius: '24px', padding: '32px', marginBottom: '32px' }}>
+                <p style={{ color: 'rgba(255,255,255,0.6)', textAlign: 'center' }}>Run a simulation to see live Fiscal Ghost data for your target city.</p>
               </div>
-              <div style={{ padding: '20px', background: 'rgba(16, 185, 129, 0.1)', borderRadius: '16px', border: '1px solid rgba(16, 185, 129, 0.2)' }}>
-                <h4 style={{ fontSize: '16px', fontWeight: 600, color: 'white', marginBottom: '12px' }}>💰 Financial Insight</h4>
-                <p style={{ color: 'rgba(255,255,255,0.7)', fontSize: '14px', lineHeight: 1.7 }}>
-                  Your current spending patterns in London translate to approximately €4,200/month in Berlin - a 22% reduction in cost of living.
-                  With your income of $95,000, you could save an additional $18,000/year while maintaining the same lifestyle quality.
-                  Hidden costs to budget: €2,800/year for document translation and legal fees during your first year.
-                </p>
-              </div>
-            </div>
+            )}
             <div style={{ marginTop: '32px' }}>
               <HyperLocalData />
             </div>

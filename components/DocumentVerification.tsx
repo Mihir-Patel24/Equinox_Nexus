@@ -156,7 +156,7 @@ export function DocumentVerification() {
           },
           { 
             name: 'Watermark Detection', 
-            status: isSuspicious ? 'fail' : (Math.random() < 0.3 ? 'warning' : 'pass') as const,
+            status: (isSuspicious ? 'fail' : (Math.random() < 0.3 ? 'warning' : 'pass')) as 'warning' | 'pass' | 'fail',
             confidence: isSuspicious ? randomScore(25, 55) : randomScore(72, 92),
             details: isSuspicious 
               ? 'No valid watermark detected - document may be forged'
@@ -210,7 +210,7 @@ export function DocumentVerification() {
         }
       };
 
-      const checks = generateChecks();
+      const checks = generateChecks() as VerificationResult['checks'];
       const failedChecks = checks.filter(c => c.status === 'fail').length;
       const warningChecks = checks.filter(c => c.status === 'warning').length;
       

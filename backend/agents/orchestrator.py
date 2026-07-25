@@ -1,6 +1,6 @@
 """
-Multi-Agent Orchestrator using LangGraph
-Coordinates the three specialized agents: Actuary, Fiscal Ghost, and Nexus
+⚠️ DEPRECATED: This legacy orchestrator is replaced by the production core/agents/graph.py backend.
+Please do not modify this file. All active development happens in the core/ directory.
 """
 
 from typing import Dict, List, Any

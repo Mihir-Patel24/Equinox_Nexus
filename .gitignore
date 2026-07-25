@@ -62,3 +62,16 @@ ENV/
 
 # Exclude web folder
 web/
+
+# Local configuration and environment variables
+.env
+core/.env
+.env*.local
+
+# Datasets & testing cache
+Dataset/
+.pytest_cache/
+core/.pytest_cache/
+*.pkl
+*.log
+

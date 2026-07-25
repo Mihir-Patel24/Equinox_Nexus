@@ -4,24 +4,41 @@ import { motion } from 'framer-motion';
 import { Brain, Globe, Calculator, Shield, TrendingUp, Zap, CheckCircle } from 'lucide-react';
 import { useState, useEffect } from 'react';
 
-export function LoadingAnimation() {
-  const [currentStep, setCurrentStep] = useState(0);
-  const [completedSteps, setCompletedSteps] = useState<number[]>([]);
+interface LoadingAnimationProps {
+  currentStep?: number;
+  completedSteps?: number[];
+  statusMessage?: string;
+  stepSubtexts?: string[];
+}
+
+export function LoadingAnimation({
+  currentStep: propCurrentStep,
+  completedSteps: propCompletedSteps,
+  statusMessage,
+  stepSubtexts
+}: LoadingAnimationProps = {}) {
+  const isControlled = propCurrentStep !== undefined;
+  const [localCurrentStep, setLocalCurrentStep] = useState(0);
+  const [localCompletedSteps, setLocalCompletedSteps] = useState<number[]>([]);
+
+  const currentStep = isControlled ? propCurrentStep : localCurrentStep;
+  const completedSteps = isControlled ? propCompletedSteps || [] : localCompletedSteps;
 
   const steps = [
-    { icon: Globe, text: 'Scanning global markets', subtext: '160+ currencies analyzed', color: '#3b82f6' },
-    { icon: Brain, text: 'Actuary evaluating risks', subtext: 'Health & safety metrics', color: '#ef4444' },
-    { icon: Calculator, text: 'Fiscal Ghost processing', subtext: 'Expense pattern analysis', color: '#10b981' },
-    { icon: Shield, text: 'Nexus checking compliance', subtext: 'Tax treaty optimization', color: '#8b5cf6' },
-    { icon: TrendingUp, text: 'Generating projections', subtext: '5-year wealth trajectory', color: '#06b6d4' },
-    { icon: Zap, text: 'Finalizing results', subtext: 'AI recommendations ready', color: '#f59e0b' }
+    { icon: Globe, text: 'Scanning global markets', subtext: stepSubtexts?.[0] || '160+ currencies analyzed', color: '#3b82f6' },
+    { icon: Brain, text: 'Actuary evaluating risks', subtext: stepSubtexts?.[1] || 'Health & safety metrics', color: '#ef4444' },
+    { icon: Calculator, text: 'Fiscal Ghost processing', subtext: stepSubtexts?.[2] || 'Expense pattern analysis', color: '#10b981' },
+    { icon: Shield, text: 'Nexus checking compliance', subtext: stepSubtexts?.[3] || 'Tax treaty optimization', color: '#8b5cf6' },
+    { icon: TrendingUp, text: 'Generating projections', subtext: stepSubtexts?.[4] || '5-year wealth trajectory', color: '#06b6d4' },
+    { icon: Zap, text: 'Finalizing results', subtext: stepSubtexts?.[5] || 'AI recommendations ready', color: '#f59e0b' }
   ];
 
   useEffect(() => {
+    if (isControlled) return;
     const interval = setInterval(() => {
-      setCurrentStep(prev => {
+      setLocalCurrentStep(prev => {
         if (prev < steps.length - 1) {
-          setCompletedSteps(completed => [...completed, prev]);
+          setLocalCompletedSteps(completed => [...completed, prev]);
           return prev + 1;
         }
         return prev;
@@ -29,7 +46,7 @@ export function LoadingAnimation() {
     }, 500);
 
     return () => clearInterval(interval);
-  }, [steps.length]);
+  }, [isControlled, steps.length]);
 
   return (
     <div style={{ minHeight: '600px', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '48px 0' }}>

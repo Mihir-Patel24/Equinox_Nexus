@@ -1,18 +1,44 @@
-from typing import TypedDict, List, Dict, Any, Optional
+"""
+AgentState — Equinox Nexus v3.0
+Supports parallel agent execution via Annotated reducers.
+All agent outputs use operator.add merge so parallel branches
+can write independently without clobbering each other.
+"""
+
+from typing import TypedDict, List, Dict, Any, Optional, Annotated
 import operator
 
+
+def _last(a, b):
+    """Reducer: keep the latest non-None value."""
+    return b if b is not None else a
+
+
 class AgentState(TypedDict):
-    # User Input
+    # ── Identity ────────────────────────────────────────────────────
+    twin_id: Optional[str]              # Persistent digital twin ID
+    session_id: Optional[str]           # Per-request session
+
+    # ── User Input ──────────────────────────────────────────────────
     current_city: str
     target_city: str
-    user_profile: Dict[str, Any]  # annual_income, monthly_expenses, currency, lifestyle_preferences, current_wealth
+    user_profile: Dict[str, Any]
 
-    # Agent Outputs
-    risk_analysis: Optional[Dict[str, Any]]       # Actuary
-    expense_analysis: Optional[Dict[str, Any]]    # Fiscal Ghost
-    compliance_analysis: Optional[Dict[str, Any]] # Nexus
+    # ── Agent Outputs (Annotated for parallel merge) ─────────────────
+    # Each parallel branch writes its own key; no conflicts.
+    risk_analysis: Annotated[Optional[Dict[str, Any]], _last]        # Actuary
+    expense_analysis: Annotated[Optional[Dict[str, Any]], _last]     # Fiscal Ghost
+    compliance_analysis: Annotated[Optional[Dict[str, Any]], _last]  # Nexus
+    monte_carlo_result: Annotated[Optional[Dict[str, Any]], _last]   # Chronos
+    payroll_analysis: Annotated[Optional[Dict[str, Any]], _last]     # Payroll Intel
+    decision_intelligence: Annotated[Optional[Dict[str, Any]], _last] # Decision Intelligence
 
-    # Final Output
+    # ── XAI Trace ───────────────────────────────────────────────────
+    # Each agent appends its reasoning; operator.add concatenates lists
+    agent_reasoning: Annotated[List[Dict[str, Any]], operator.add]
+
+    # ── Final Output ────────────────────────────────────────────────
     final_report: Optional[Dict[str, Any]]
     wealth_projection: Optional[List[Dict[str, Any]]]
-    errors: List[str]
+    xai_explanation: Optional[Dict[str, Any]]
+    errors: Annotated[List[str], operator.add]

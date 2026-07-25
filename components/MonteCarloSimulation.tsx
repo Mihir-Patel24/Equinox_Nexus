@@ -22,6 +22,7 @@ interface MonteCarloProps {
   baseWealth?: number;
   annualIncome?: number;
   targetCity?: string;
+  backendResult?: any;
 }
 
 // Box-Muller transform for normal distribution
@@ -90,13 +91,45 @@ function runMonteCarloSimulation(
   return results;
 }
 
-export function MonteCarloSimulation({ baseWealth = 85000, annualIncome = 95000, targetCity = 'Berlin' }: MonteCarloProps) {
+export function MonteCarloSimulation({ baseWealth = 85000, annualIncome = 95000, targetCity = 'Berlin', backendResult }: MonteCarloProps) {
   const [isRunning, setIsRunning] = useState(false);
-  const [simCount, setSimCount] = useState(1000);
-  const [volatility, setVolatility] = useState(0.15);
+  const [simCount, setSimCount] = useState(backendResult?.n_simulations || 1000);
+  const [volatility, setVolatility] = useState(backendResult?.risk_metrics?.fx_volatility_used || 0.15);
   const [results, setResults] = useState<SimulationResult[] | null>(null);
   const [progress, setProgress] = useState(0);
   const [showDetails, setShowDetails] = useState(false);
+
+  useEffect(() => {
+    if (backendResult) {
+      const paths = backendResult.simulation_paths;
+      if (paths && paths.years) {
+        const formattedResults: SimulationResult[] = [{
+          year: 0,
+          p5: baseWealth,
+          p25: baseWealth,
+          p50: baseWealth,
+          p75: baseWealth,
+          p95: baseWealth,
+          mean: baseWealth
+        }];
+        for (let i = 0; i < paths.years.length; i++) {
+          formattedResults.push({
+            year: paths.years[i],
+            p5: paths.p5[i],
+            p25: paths.p25[i],
+            p50: paths.p50[i],
+            p75: paths.p75[i],
+            p95: paths.p95[i],
+            mean: paths.p50[i]
+          });
+        }
+        setResults(formattedResults);
+        if (backendResult.risk_metrics?.fx_volatility_used) {
+          setVolatility(backendResult.risk_metrics.fx_volatility_used);
+        }
+      }
+    }
+  }, [backendResult, baseWealth]);
 
   const runSimulation = () => {
     setIsRunning(true);

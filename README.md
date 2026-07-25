@@ -1,106 +1,114 @@
 # Equinox Nexus 🌍
 
-**The world's first Agentic Financial Digital Twin for global workforce mobility.**
+**The world's first Autonomous Agentic Financial Digital Twin for global workforce mobility.**
+
+Equinox Nexus is a production-grade, multi-agent AI system built using **FastAPI**, **LangGraph**, and **Next.js**. It constructs a persistent **Financial Digital Twin** of an individual or workforce and projects long-term financial, lifestyle, and regulatory outcomes across jurisdictions using machine learning, Monte Carlo methods, and RAG.
 
 ---
 
-## 👁️ Vision
+## 🏗️ Technical Architecture
 
-Equinox Nexus is an autonomous AI-powered platform that creates a **Financial Digital Twin** of an individual or workforce and simulates future financial outcomes across countries, careers, and economic conditions.
+Equinox Nexus employs a parallel multi-agent graph orchestrated via **LangGraph**. The system fetches real-time data, processes it through specialized domain agents, and aggregates the outputs with Explainable AI (XAI) feature decomposition.
 
-Unlike traditional relocation, payroll, or financial planning tools that provide static recommendations, Equinox Nexus models the future and evaluates the consequences of decisions *before* they happen.
+### System Data Flow
+
+```mermaid
+graph TD
+    User([User Request]) --> SSE[FastAPI SSE Router /simulate/stream]
+    SSE --> Graph[LangGraph Agent Graph]
+    
+    subgraph Parallel Stage (ThreadPoolExecutor)
+        Graph --> Actuary[🕵️ Actuary Agent]
+        Graph --> Fiscal[👻 Fiscal Ghost Agent]
+        Graph --> Nexus[⚖️ The Nexus RAG]
+    end
+    
+    Actuary --> AQI[Live Open-Meteo AQI + Safety Indicators]
+    Fiscal --> BehaviourModel[XGBoost Behaviour Model R²=0.999]
+    Nexus --> VectorDB[ChromaDB Vector Index / 26 countries]
+    
+    Parallel_Done{Merge Partial State}
+    AQI --> Parallel_Done
+    BehaviourModel --> Parallel_Done
+    VectorDB --> Parallel_Done
+    
+    Parallel_Done --> Chronos[⏳ Chronos Projection Agent]
+    Chronos --> MC[1000-Path Monte Carlo GBM Simulation]
+    Chronos --> Prophet[Prophet FX Drift Forecast]
+    
+    MC --> DI[💼 Decision Intelligence Groq llama-3.3-70b]
+    Prophet --> DI
+    
+    DI --> Aggregator[📊 Aggregator + Explainable AI]
+    Aggregator --> Output([Real-Time SSE Update & Final Twin Storage])
+```
 
 ---
 
-## 🎯 Problem Statement
+## 🤖 The Multi-Agent Swarm
 
-International relocation and cross-border employment involve complex financial, regulatory, and lifestyle decisions.
-
-**Individuals struggle to answer:**
-* Can I financially sustain life in another country?
-* How will taxes affect my wealth over time?
-* What hidden costs will emerge after relocation?
-* How will inflation, exchange rates, and policy changes impact my future?
-
-**Organizations struggle with:**
-* Global payroll planning and compliance across jurisdictions.
-* Workforce relocation costs and financial forecasting.
-* Fraud detection and payroll anomalies.
-
----
-
-## 💡 The Solution
-
-Equinox Nexus creates a living **Financial Digital Twin** that continuously models income, expenses, assets, tax obligations, and economic conditions. The platform runs simulations across multiple future scenarios, providing **decision intelligence** instead of static advice.
-
----
-
-## 🚀 Core Innovation: Financial Digital Twin Engine
-
-The Financial Twin acts as a virtual representation of a user’s financial life, evolving using:
-* **Personal Data:** Spending behavior and bank transaction analysis.
-* **Global Data:** Real-time cost-of-living, tax regulations, and economic indicators.
-* **Workforce Data:** Payroll liabilities and compliance monitoring.
-
----
-
-## 🤖 Multi-Agent Architecture
-
-The platform utilizes a **LangGraph-based** multi-agent orchestration framework:
-
-| Agent | Responsibility | Key Capability |
+| Agent | Technology | Responsibility |
 | :--- | :--- | :--- |
-| **🕵️ The Actuary** | Risk & Quality of Life | Analyzes AQI, healthcare, safety, and infrastructure. |
-| **👻 Fiscal Ghost** | Expense Modeling | Projects lifestyle costs in new cities using spending patterns. |
-| **⚖️ The Nexus** | Compliance & Regulatory | RAG-powered intelligence for tax treaties and visa laws. |
-| **⏳ The Chronos** | Simulation & Forecasting | Monte Carlo simulations for 5-year wealth trajectories. |
-| **💼 Payroll Intel** | Enterprise Intelligence | Payroll forecasting, anomaly detection, and cost simulation. |
+| **🕵️ The Actuary** | `httpx` + Open-Meteo API | Risk & QoL. Computes safety index, healthcare access, and real-time Air Quality Indexes (AQI). |
+| **👻 Fiscal Ghost** | `scikit-learn` XGBoost Regressor | Lifestyle-scaled expense projection. Evaluates custom consumption parameters against a database of 10,000 synthetic consumer profiles. |
+| **⚖️ The Nexus** | `ChromaDB` + `sentence-transformers` | Retrieval-Augmented Generation (RAG) querying 52 text chunks across 26 countries to evaluate tax brackets, double taxation avoidance (DTA) treaties, and visas. |
+| **⏳ The Chronos** | Geometric Brownian Motion + Prophet | 5-Year wealth trajectory forecaster. Simulates 1,000 stochastic paths with Prophet currency drift modeling. |
+| **💼 Payroll Intel** | `scikit-learn` Isolation Forest | Outlier detection and anomaly scanning for corporate payroll datasets (up to 10k items per batch). |
+| **🔎 Research Agent** | OECD + World Bank + IMF APIs | Autonomous background scraper with a 7-day cache gate that auto-updates and re-indexes the RAG vector database. |
 
 ---
 
-## 🛠️ Technology Stack
+## 🔬 Mathematical Formulations
 
-### **Frontend**
-* **Framework:** Next.js
-* **Styling:** Tailwind CSS / Vanilla CSS
-* **Visualization:** Recharts, Framer Motion
+### Stochastic Wealth Projection (GBM)
+The Chronos agent models wealth trajectories using Geometric Brownian Motion (GBM) with deterministic currency drift:
 
-### **Backend & AI**
-* **Core:** Python, FastAPI
-* **Orchestration:** LangGraph, LangChain
-* **Knowledge Layer:** RAG (Retrieval-Augmented Generation), Vector Databases
-* **Machine Learning:** XGBoost, Prophet, Isolation Forest
+$$dS_t = \mu S_t dt + \sigma S_t dW_t$$
 
-### **Infrastructure**
-* **Databases:** PostgreSQL, MongoDB, Redis
-* **Hosting:** Vercel (Frontend), Railway/Render (Backend)
+Where:
+- $S_t$ is the user's projected wealth.
+- $\mu$ is the drift coefficient, dynamically loaded from the **Prophet FX forecast model** ($52$-week trend horizon).
+- $\sigma$ is the historical volatility of the target currency.
+- $dW_t$ is the Wiener process increment (normal distribution random walk).
 
 ---
 
-## ✨ Key Features
+## ⚡ Hackathon Live Demo Highlight: Real-Time SSE Streaming
 
-* **5-Year Wealth Simulator:** Forecast wealth trajectories across diverse scenarios.
-* **Economic Stress Testing:** Analyze resilience against inflation and currency volatility.
-* **Relocation Viability Score:** Measure the long-term sustainability of moves.
-* **Explainable AI:** Transparent reasoning and confidence scores for all projections.
-* **Fraud Detection:** Identify payroll anomalies and suspicious patterns for enterprises.
+Instead of standard blocking REST APIs, Equinox Nexus implements a **Server-Sent Events (SSE) streaming architecture** on the `/simulate/stream` route.
+As the LangGraph execution tree executes:
+1. **Pipeline Start:** Backend starts LangGraph thread initialization.
+2. **Parallel Agent Execution:** Actuary, Fiscal Ghost, and Nexus RAG trigger simultaneously.
+3. **Chronos Activation:** Monte Carlo simulation is computed.
+4. **Decision Intelligence:** Groq LLM synthesizes reasoning.
+5. **Completion:** The final JSON state is saved to the SQLite/PostgreSQL **Twin Store** and returned.
 
----
-
-## 🛤️ Future Roadmap
-
-* **Phase 1:** Financial Digital Twin Construction
-* **Phase 2:** Multi-Agent Intelligence Layer
-* **Phase 3:** Regulatory RAG System Integration
-* **Phase 4:** Future Simulation Engine (Monte Carlo)
-* **Phase 5:** Payroll Intelligence Platform Launch
-* **Phase 6:** Continuous Autonomous Monitoring
+The React frontend hooks into the SSE stream, rendering live progress logs and status ticks on the **Agent Swarm Loading Panel** in real time.
 
 ---
 
-## 📞 Tagline
+## 🚀 One-Command Quickstart
 
-> **"Simulate the future before you move."**
+To run the entire platform locally, make sure you have python 3.11+ and node.js installed.
+
+1. **Clone the Repository & Navigate**
+   ```powershell
+   git clone <repo-url>
+   cd EQUINOX-FLOW
+   ```
+
+2. **Configure your Credentials**
+   Create a `.env` file in the `core/` folder (or edit `core/.env.example`):
+   ```env
+   GROQ_API_KEY=your_groq_api_key_here
+   API_KEY_ENABLED=false
+   ```
+
+3. **Start Frontend & Backend with One Command**
+   We have provided a comprehensive startup script that handles port checking, environment validation, background processes, and graceful Ctrl+C cleanup:
+   ```powershell
+   .\run.ps1
+   ```
 
 ---
-© 2026 Equinox Nexus • Built for the Future of Global Mobility
+© 2026 Equinox Nexus • Simulated and Orchestrated by Multi-Agent AI

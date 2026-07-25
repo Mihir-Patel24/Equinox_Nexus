@@ -1,3 +1,6 @@
+# ⚠️ DEPRECATED: This legacy backend is replaced by the production core backend at core/main.py.
+# Please do not modify this file. All active development happens in the core/ directory.
+
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel

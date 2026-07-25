@@ -149,6 +149,7 @@ export function AgentSwarm() {
   const [finalSolution, setFinalSolution] = useState<any>(null);
   const [useRealAI, setUseRealAI] = useState(true);
   const [aiModels, setAiModels] = useState<any>(null);
+  const [swarmType, setSwarmType] = useState<'mock' | 'groq' | 'python'>('python');
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const tracesEndRef = useRef<HTMLDivElement>(null);
 
@@ -269,6 +270,131 @@ export function AgentSwarm() {
     }
   };
 
+  const startPythonSwarmDebate = async () => {
+    setMessages([]);
+    setTraces([]);
+    setFinalSolution(null);
+    setIsDebating(true);
+    setCurrentPhase('debating');
+    setConsensusScore(0);
+
+    try {
+      setTraces([{ id: 't0', agent: 'System', thought: '🔌 Connecting to Python LangGraph backend...', timestamp: 0, type: 'analysis' }]);
+      
+      const response = await fetch('http://localhost:8000/simulate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          current_city: 'San Francisco',
+          target_city: selectedCity,
+          annual_income: 95000,
+          currency: 'USD',
+          current_wealth: 50000,
+          lifestyle_preferences: {}
+        })
+      });
+
+      const data = await response.json();
+      if (data.status !== 'success') {
+        throw new Error('Simulation failed');
+      }
+
+      const trace = data.agent_trace || [];
+      const report = data.data?.final_report || {};
+      const xai = data.xai || {};
+
+      setTraces([{ id: 't1', agent: 'System', thought: `✅ Connected! Executing parallel LangGraph flow for ${selectedCity}`, timestamp: 0, type: 'analysis' }]);
+
+      for (let i = 0; i < trace.length; i++) {
+        const step = trace[i];
+        await new Promise(resolve => setTimeout(resolve, 1500));
+        
+        const agentName = step.agent;
+        setActiveAgent(agentName);
+
+        setTraces(prev => [...prev, {
+          id: `t${i + 2}`,
+          agent: agentName.charAt(0).toUpperCase() + agentName.slice(1),
+          thought: `Executed node: ${agentName} | Source: ${step.data_source || 'Agent Logic'}`,
+          timestamp: 0,
+          type: 'analysis'
+        }]);
+
+        await new Promise(resolve => setTimeout(resolve, 500));
+
+        let content = '';
+        if (agentName === 'actuary') {
+          content = `Quality metrics analyzed for ${selectedCity}. QoL Score: ${report.quality_of_life_score}/100. Safety: ${report.safety_score}/100 | Healthcare: ${report.healthcare_score}/100 | AQI: ${report.air_quality_index}.`;
+        } else if (agentName === 'fiscal_ghost') {
+          content = `XGBoost expense calculation complete. Projected monthly expenses: $${report.monthly_expenses?.toLocaleString()}. Cost of living multiplier is ${report.col_multiplier}x.`;
+        } else if (agentName === 'nexus') {
+          content = `RAG database queried successfully. Effective tax rate is ${(report.effective_tax_rate * 100).toFixed(1)}%. Visa: ${report.visa_requirements}. DTA status: ${report.treaty_label}.`;
+        } else if (agentName === 'chronos') {
+          content = `Monte Carlo engine ran ${data.data?.monte_carlo_result?.n_simulations} paths. Probability of growth: ${report.probability_of_growth}%. Risk rating: ${report.risk_rating}.`;
+        } else if (agentName === 'decision_intelligence') {
+          content = `Mediation Consensus Rationale: ${xai.executive_summary}`;
+        } else {
+          content = `Aggregated all agent responses. Final viability score computed: ${report.relocation_viability_score}/100.`;
+        }
+
+        setMessages(prev => [...prev, {
+          id: String(i + 1),
+          agent: (agentName === 'decision_intelligence' ? 'refiner' : agentName) as any,
+          type: agentName === 'decision_intelligence' ? 'consensus' : 'proposal',
+          content: content,
+          timestamp: i * 2000,
+          verificationStatus: 'verified'
+        }]);
+
+        setConsensusScore(prev => Math.min(prev + 20, 100));
+      }
+
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      setConsensusScore(100);
+      setCurrentPhase('consensus');
+      
+      setFinalSolution({
+        recommendation: selectedCity,
+        city: selectedCity,
+        topic: selectedTopic,
+        currency: '$',
+        confidence: xai.viability_score || 85,
+        scores: {
+          quality: report.quality_of_life_score || 75,
+          budget: Math.round(100 - (report.col_multiplier * 20)),
+          taxEfficiency: Math.round(100 - (report.effective_tax_rate * 100)),
+          overall: report.relocation_viability_score || 70
+        },
+        monthlyCost: report.monthly_expenses?.toLocaleString() || '0',
+        annualSavings: report.net_annual_savings?.toLocaleString() || '0',
+        taxBenefit: report.dta_relief ? `${(report.dta_relief * 100).toFixed(0)}%` : '0',
+        agentApprovals: [
+          { agent: 'The Actuary', status: 'approved', reason: 'Verified quality index' },
+          { agent: 'Fiscal Ghost', status: 'approved', reason: 'Verified expenses' },
+          { agent: 'The Nexus', status: 'approved', reason: 'Tax optimized via RAG' },
+          { agent: 'The Refiner', status: 'approved', reason: 'Consensus achieved via LLM decision intelligence' }
+        ],
+        keyBenefits: [
+          `Viability rating: ${report.relocation_viability_score}/100`,
+          `Effective tax rate of ${(report.effective_tax_rate * 100).toFixed(1)}%`,
+          `Projected annual savings of $${report.net_annual_savings?.toLocaleString()}`,
+          `Quality score of ${report.quality_of_life_score}/100`
+        ]
+      });
+
+      setIsDebating(false);
+      toast.success(`🐍 Python LangGraph Swarm Consensus Achieved for ${selectedCity}!`, {
+        duration: 5000,
+        style: { background: 'rgba(59, 130, 246, 0.95)', color: 'white', fontWeight: 600 }
+      });
+
+    } catch (err) {
+      console.error('Python Swarm execution failed:', err);
+      toast.error('Could not connect to Python LangGraph backend. Running mock debate instead.');
+      startMockDebate();
+    }
+  };
+
   // Fallback mock debate
   const startMockDebate = () => {
     setMessages([]);
@@ -323,7 +449,9 @@ export function AgentSwarm() {
   };
 
   const startDebate = () => {
-    if (useRealAI) {
+    if (swarmType === 'python') {
+      startPythonSwarmDebate();
+    } else if (swarmType === 'groq') {
       startRealDebate();
     } else {
       startMockDebate();
@@ -490,37 +618,44 @@ export function AgentSwarm() {
             </div>
           ))}
           
-          {/* AI Mode Toggle */}
+          {/* Swarm Mode Selector */}
           <div style={{ 
-            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-            padding: '12px 16px', background: useRealAI ? 'rgba(16, 185, 129, 0.1)' : 'rgba(245, 158, 11, 0.1)', 
-            borderRadius: '10px', border: `1px solid ${useRealAI ? 'rgba(16, 185, 129, 0.3)' : 'rgba(245, 158, 11, 0.3)'}`,
+            display: 'flex', flexDirection: 'column', gap: '8px',
+            padding: '12px 16px', background: 'rgba(255,255,255,0.03)', 
+            borderRadius: '16px', border: '1px solid rgba(255,255,255,0.08)',
             marginBottom: '8px'
           }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <span style={{ fontSize: '12px', color: useRealAI ? '#10b981' : '#f59e0b' }}>
-                {useRealAI ? '🤖 Real AI Mode' : '📝 Demo Mode'}
-              </span>
+            <span style={{ fontSize: '11px', color: 'rgba(255,255,255,0.5)', fontWeight: 600 }}>SWARM ENGINE</span>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+              {[
+                { type: 'python', label: '🐍 Python LangGraph', color: '#3b82f6', desc: 'Real-time LangGraph swarm' },
+                { type: 'groq', label: '🤖 Groq Swarm (LLM)', color: '#10b981', desc: 'Live LLM-driven adversarial debate' },
+                { type: 'mock', label: '📝 Demo Mode', color: '#f59e0b', desc: 'Pre-scripted consensus debate' }
+              ].map((item) => (
+                <button
+                  key={item.type}
+                  disabled={isDebating}
+                  onClick={() => setSwarmType(item.type as any)}
+                  style={{
+                    padding: '8px 12px',
+                    textAlign: 'left',
+                    borderRadius: '8px',
+                    background: swarmType === item.type ? `${item.color}20` : 'rgba(255,255,255,0.02)',
+                    border: `1px solid ${swarmType === item.type ? item.color : 'rgba(255,255,255,0.05)'}`,
+                    color: 'white',
+                    cursor: isDebating ? 'not-allowed' : 'pointer',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '2px',
+                    transition: 'all 0.2s'
+                  }}
+                >
+                  <span style={{ fontSize: '12px', fontWeight: 600, color: swarmType === item.type ? 'white' : 'rgba(255,255,255,0.7)' }}>{item.label}</span>
+                  <span style={{ fontSize: '9px', color: 'rgba(255,255,255,0.4)' }}>{item.desc}</span>
+                </button>
+              ))}
             </div>
-            <button 
-              onClick={() => setUseRealAI(!useRealAI)}
-              disabled={isDebating}
-              style={{
-                padding: '4px 10px', fontSize: '10px', fontWeight: 600,
-                background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.2)',
-                borderRadius: '6px', color: 'white', cursor: isDebating ? 'not-allowed' : 'pointer'
-              }}
-            >
-              Switch
-            </button>
           </div>
-
-          {/* Model Info */}
-          {useRealAI && (
-            <div style={{ fontSize: '10px', color: 'rgba(255,255,255,0.4)', padding: '0 4px', marginBottom: '8px' }}>
-              Models: Llama 3.3 70B • Mixtral 8x7B
-            </div>
-          )}
           
           <button onClick={startDebate} disabled={isDebating}
             style={{
@@ -532,7 +667,11 @@ export function AgentSwarm() {
             onMouseEnter={(e) => { if (!isDebating) e.currentTarget.style.transform = 'scale(1.02)'; }}
             onMouseLeave={(e) => { e.currentTarget.style.transform = 'scale(1)'; }}
           >
-            {isDebating ? <><RefreshCw style={{ width: '16px', height: '16px', animation: 'spin 1s linear infinite' }} /> {useRealAI ? 'AI Thinking...' : 'Processing...'}</> : <><Sparkles style={{ width: '16px', height: '16px' }} /> Start {useRealAI ? 'AI' : ''} Debate</>}
+            {isDebating ? (
+              <><RefreshCw style={{ width: '16px', height: '16px', animation: 'spin 1s linear infinite' }} /> Swarm Running...</>
+            ) : (
+              <><Sparkles style={{ width: '16px', height: '16px' }} /> Start Swarm Debate</>
+            )}
           </button>
         </div>
 

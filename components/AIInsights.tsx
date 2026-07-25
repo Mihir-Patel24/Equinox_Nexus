@@ -74,17 +74,85 @@ const insights: Insight[] = [
   }
 ];
 
-export function AIInsights() {
+interface AIInsightsProps {
+  xaiData?: {
+    viability_score?: number;
+    confidence_interval?: number[];
+    executive_summary?: string;
+    factor_contributions?: any[];
+    key_risks?: string[];
+    key_advantages?: string[];
+    methodology?: any;
+  };
+  complianceIntelligence?: {
+    compliance_notes?: string[];
+    rag_sources?: string[];
+    visa_requirements?: string;
+    treaty_label?: string;
+    compliance_brief_excerpt?: string;
+  };
+}
+
+export function AIInsights({ xaiData, complianceIntelligence }: AIInsightsProps) {
   const [expandedInsight, setExpandedInsight] = useState<string | null>(null);
   const [showTreaty, setShowTreaty] = useState(false);
   const [selectedTreaty, setSelectedTreaty] = useState<any>(null);
   const [showAnalysisModal, setShowAnalysisModal] = useState(false);
   const [selectedInsight, setSelectedInsight] = useState<Insight | null>(null);
 
+  const dynamicInsights: Insight[] = [];
+  if (xaiData && xaiData.factor_contributions) {
+    if (xaiData.executive_summary) {
+      dynamicInsights.push({
+        id: 'exec-summary',
+        type: 'recommendation',
+        title: `Relocation Analysis Summary`,
+        description: xaiData.executive_summary,
+        impact: `Viability Score: ${xaiData.viability_score}/100`,
+        confidence: 95,
+        citations: (complianceIntelligence?.rag_sources || []).map(src => ({
+          source: src,
+          date: '2024'
+        }))
+      });
+    }
+
+    xaiData.factor_contributions.forEach((contrib: any, idx: number) => {
+      dynamicInsights.push({
+        id: `factor-${idx}`,
+        type: contrib.direction === 'positive' ? 'opportunity' : 'warning',
+        title: contrib.factor,
+        description: contrib.explanation,
+        impact: contrib.raw_value,
+        confidence: Math.round(contrib.score),
+        citations: [{
+          source: contrib.data_source || 'OECD / Numbeo / ECB Data',
+          date: '2024'
+        }]
+      });
+    });
+
+    if (xaiData.key_risks) {
+      xaiData.key_risks.forEach((risk: string, idx: number) => {
+        dynamicInsights.push({
+          id: `risk-${idx}`,
+          type: 'warning',
+          title: `Key Risk Factor ${idx + 1}`,
+          description: risk,
+          impact: 'Critical Alert',
+          confidence: 90,
+          citations: []
+        });
+      });
+    }
+  }
+
+  const activeInsights = dynamicInsights.length > 0 ? dynamicInsights : insights;
+
   const treatyData = {
-    title: 'Germany-US Tax Treaty',
+    title: complianceIntelligence?.treaty_label || 'Germany-US Tax Treaty',
     article: 'Article 15 - Income from Employment',
-    text: `Article 15 - INCOME FROM EMPLOYMENT
+    text: complianceIntelligence?.compliance_brief_excerpt || `Article 15 - INCOME FROM EMPLOYMENT
 
 1. Subject to the provisions of Articles 16, 18, 19, and 20, salaries, wages and other similar remuneration derived by a resident of a Contracting State in respect of an employment shall be taxable only in that State unless the employment is exercised in the other Contracting State. If the employment is so exercised, such remuneration as is derived therefrom may be taxed in that other State.
 
@@ -95,9 +163,9 @@ a) the recipient is present in the other State for a period or periods not excee
 b) the remuneration is paid by, or on behalf of, an employer who is not a resident of the other State, and
 
 c) the remuneration is not borne by a permanent establishment which the employer has in the other State.`,
-    source: 'US Department of Treasury - Tax Treaties',
+    source: complianceIntelligence?.rag_sources?.join(', ') || 'US Department of Treasury - Tax Treaties',
     url: 'https://www.irs.gov/businesses/international-businesses/germany-tax-treaty-documents',
-    calculation: 'Based on your income profile ($95,000/year) and employment status, Article 15 allows you to claim relief on double taxation. Since you will be employed by a US company while residing in Germany, you qualify for the 183-day rule exemption. This means your first 6 months of income will only be taxed in the US, saving you approximately $8,400 in German income tax during your transition period.'
+    calculation: xaiData?.executive_summary || 'Based on your income profile ($95,000/year) and employment status, Article 15 allows you to claim relief on double taxation. Since you will be employed by a US company while residing in Germany, you qualify for the 183-day rule exemption. This means your first 6 months of income will only be taxed in the US, saving you approximately $8,400 in German income tax during your transition period.'
   };
 
   const handleViewTreaty = () => {
@@ -157,7 +225,7 @@ c) the remuneration is not borne by a permanent establishment which the employer
       </div>
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-        {insights.map((insight, i) => {
+        {activeInsights.map((insight, i) => {
           const styles = getTypeStyles(insight.type);
           const isExpanded = expandedInsight === insight.id;
           const IconComponent = styles.icon;

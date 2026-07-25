@@ -1,7 +1,18 @@
 from typing import Dict, Any
-import requests
+import httpx
+import pickle
+import os
 
-# Real AQI data per city using Open-Meteo Air Quality API (completely free, no key needed)
+MODEL_PATH = os.path.join(os.path.dirname(__file__), "../../models/quality_model.pkl")
+
+# Load quality model at startup
+_qol_lookup = {}
+try:
+    with open(MODEL_PATH, "rb") as f:
+        _qol_lookup = pickle.load(f)
+except FileNotFoundError:
+    pass  # fallback to API-only mode
+
 CITY_COORDINATES = {
     "london": (51.5074, -0.1278), "berlin": (52.5200, 13.4050),
     "tokyo": (35.6762, 139.6503), "singapore": (1.3521, 103.8198),
@@ -15,23 +26,6 @@ CITY_COORDINATES = {
     "stockholm": (59.3293, 18.0686), "oslo": (59.9139, 10.7522),
 }
 
-# Fallback city risk data when API is unavailable
-CITY_RISK_DATA = {
-    "london": {"safety_score": 72, "healthcare_score": 88, "aqi": 35},
-    "berlin": {"safety_score": 78, "healthcare_score": 90, "aqi": 28},
-    "tokyo": {"safety_score": 92, "healthcare_score": 94, "aqi": 22},
-    "singapore": {"safety_score": 95, "healthcare_score": 92, "aqi": 40},
-    "dubai": {"safety_score": 85, "healthcare_score": 80, "aqi": 55},
-    "new york": {"safety_score": 65, "healthcare_score": 85, "aqi": 42},
-    "paris": {"safety_score": 68, "healthcare_score": 91, "aqi": 38},
-    "sydney": {"safety_score": 88, "healthcare_score": 92, "aqi": 18},
-    "toronto": {"safety_score": 85, "healthcare_score": 90, "aqi": 20},
-    "mumbai": {"safety_score": 55, "healthcare_score": 65, "aqi": 145},
-    "delhi": {"safety_score": 48, "healthcare_score": 60, "aqi": 180},
-    "bangalore": {"safety_score": 60, "healthcare_score": 70, "aqi": 88},
-    "bangkok": {"safety_score": 62, "healthcare_score": 72, "aqi": 95},
-}
-
 class ActuaryAgent:
     def __init__(self):
         self.aqi_base_url = "https://air-quality-api.open-meteo.com/v1/air-quality"
@@ -41,14 +35,13 @@ class ActuaryAgent:
 
     def _fetch_live_aqi(self, lat: float, lon: float) -> int:
         try:
-            resp = requests.get(
-                self.aqi_base_url,
-                params={"latitude": lat, "longitude": lon, "current": "pm2_5,us_aqi"},
-                timeout=5
-            )
-            if resp.status_code == 200:
-                data = resp.json()
-                return int(data.get("current", {}).get("us_aqi", 50))
+            with httpx.Client(timeout=5.0) as client:
+                resp = client.get(
+                    self.aqi_base_url,
+                    params={"latitude": lat, "longitude": lon, "current": "pm2_5,us_aqi"},
+                )
+                if resp.status_code == 200:
+                    return int(resp.json().get("current", {}).get("us_aqi", 50))
         except Exception:
             pass
         return None
@@ -56,36 +49,45 @@ class ActuaryAgent:
     def analyze_risk(self, target_city: str) -> Dict[str, Any]:
         print(f"Actuary: Analyzing risks for {target_city}")
         city_key = target_city.lower().split(",")[0].strip()
-        fallback = CITY_RISK_DATA.get(city_key, {"safety_score": 65, "healthcare_score": 70, "aqi": 75})
 
-        # Try live AQI first
-        aqi = fallback["aqi"]
+        # Use trained quality model if available
+        if city_key in _qol_lookup:
+            data = _qol_lookup[city_key]
+            aqi = data["aqi"]
+            # Try to get live AQI to override
+            coords = self._get_coordinates(target_city)
+            if coords:
+                live_aqi = self._fetch_live_aqi(*coords)
+                if live_aqi is not None:
+                    aqi = live_aqi
+            return {
+                "air_quality_index": aqi,
+                "safety_score": data["safety_score"],
+                "healthcare_score": data["healthcare_score"],
+                "happiness_index": data["happiness_index"],
+                "composite_score": data["composite_score"],
+                "healthcare_wait_time_hours": max(1, int((100 - data["healthcare_score"]) / 10)),
+                "overall_risk_rating": data["risk_rating"],
+                "data_source": "Trained QoL model + Open-Meteo AQI",
+                "notes": f"AQI {aqi} — {'Good' if aqi <= 50 else 'Moderate' if aqi <= 100 else 'Unhealthy'}. Safety {data['safety_score']}/100."
+            }
+
+        # Fallback: API only
+        aqi = 75
         coords = self._get_coordinates(target_city)
         if coords:
             live_aqi = self._fetch_live_aqi(*coords)
             if live_aqi is not None:
                 aqi = live_aqi
-
-        safety = fallback["safety_score"]
-        healthcare = fallback["healthcare_score"]
-
-        # Risk rating logic
-        if aqi <= 50 and safety >= 80:
-            rating = "Low"
-        elif aqi <= 100 and safety >= 60:
-            rating = "Medium"
-        else:
-            rating = "High"
-
+        rating = "Low" if aqi <= 50 else "Medium" if aqi <= 100 else "High"
         return {
             "air_quality_index": aqi,
-            "safety_score": safety,
-            "healthcare_score": healthcare,
-            "healthcare_wait_time_hours": max(1, int((100 - healthcare) / 10)),
+            "safety_score": 65,
+            "healthcare_score": 70,
+            "happiness_index": 65,
+            "composite_score": 65.0,
+            "healthcare_wait_time_hours": 8,
             "overall_risk_rating": rating,
-            "data_source": "Open-Meteo AQI (live)" if coords else "Curated dataset",
-            "notes": (
-                f"AQI {aqi} — {'Good' if aqi <= 50 else 'Moderate' if aqi <= 100 else 'Unhealthy'}. "
-                f"Safety score {safety}/100."
-            )
+            "data_source": "Open-Meteo AQI (live)",
+            "notes": f"AQI {aqi} — city not in trained model, using live AQI only."
         }
