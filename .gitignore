@@ -75,3 +75,15 @@ core/.pytest_cache/
 *.pkl
 *.log
 
+# ── Deployment secrets (NEVER commit these) ───────────────────────────────────
+.env.production
+nginx/ssl/
+!nginx/ssl/.gitkeep
+
+# SQLite twin database (dev artifact — prod uses PostgreSQL)
+core/twin/twins.db
+
+# ChromaDB local vector store (prod uses named Docker volume)
+core/rag/chroma_db/
+core/rag/kb_index.hash
+
