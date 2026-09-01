@@ -1,0 +1,38 @@
+# ── Frontend .dockerignore ────────────────────────────────────────────────────
+# Keeps the frontend Docker build context lean — only ship source code
+
+# Heavy directories — npm ci downloads these fresh
+node_modules/
+
+# Next.js build output — builder stage generates this
+.next/
+
+# Backend source (not needed in frontend image)
+core/
+
+# Dataset files (not needed in frontend image)
+Dataset/
+
+# Nginx config (mounted separately)
+nginx/
+
+# Environment files (injected at runtime via docker-compose env_file)
+.env
+.env.local
+.env.production
+.env.local.example
+
+# Git
+.git/
+.gitignore
+
+# IDE / OS artifacts
+.vscode/
+.qodo/
+Thumbs.db
+Desktop.ini
+*.log
+
+# Docker files (avoid self-referential copies)
+Dockerfile*
+docker-compose*.yml

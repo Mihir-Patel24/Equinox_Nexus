@@ -1,0 +1,54 @@
+# ── Equinox Nexus — Frontend Dockerfile ───────────────────────────────────────
+# Node 20 Alpine for a minimal Next.js production image
+# Uses Next.js standalone output — only ships what's needed at runtime
+
+FROM node:20-alpine AS deps
+WORKDIR /app
+
+# Install dependencies
+COPY package.json package-lock.json ./
+RUN npm ci --only=production --ignore-scripts
+
+# ── Builder stage ──────────────────────────────────────────────────────────────
+FROM node:20-alpine AS builder
+WORKDIR /app
+
+COPY package.json package-lock.json ./
+RUN npm ci --ignore-scripts
+
+# Copy source — exclude node_modules and .next via .dockerignore
+COPY . .
+
+# Build-time env vars (injected by docker-compose build args)
+ARG NEXT_PUBLIC_API_URL=http://localhost/api
+ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
+# Activate standalone output mode (only during Docker builds — not local dev)
+ENV NEXT_OUTPUT=standalone
+
+# Build Next.js standalone output
+RUN npm run build
+
+# ── Runtime stage ──────────────────────────────────────────────────────────────
+FROM node:20-alpine AS runtime
+WORKDIR /app
+
+ENV NODE_ENV=production
+ENV PORT=3000
+
+# Next.js standalone output contains server.js + all required files
+COPY --from=builder /app/.next/standalone ./
+COPY --from=builder /app/.next/static ./.next/static
+COPY --from=builder /app/public ./public
+
+# Non-root user
+RUN addgroup -g 1001 nextjs && \
+    adduser -S -u 1001 -G nextjs nextjs && \
+    chown -R nextjs:nextjs /app
+USER nextjs
+
+EXPOSE 3000
+
+HEALTHCHECK --interval=30s --timeout=10s --start-period=45s --retries=3 \
+  CMD wget -qO- http://localhost:3000/ | grep -q "html" || exit 1
+
+CMD ["node", "server.js"]
