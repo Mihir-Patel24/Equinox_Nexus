@@ -1,0 +1,36 @@
+# ── Backend .dockerignore ─────────────────────────────────────────────────────
+# Keeps the backend Docker build context lean
+
+# Python cache
+__pycache__/
+*.py[cod]
+*.pyc
+*.pyo
+.pytest_cache/
+.mypy_cache/
+
+# Test files (not needed in production image)
+tests/
+test_backend.py
+
+# ChromaDB local directory (will be mounted as a volume in production)
+rag/chroma_db/
+
+# Virtual environments
+venv/
+.venv/
+env/
+
+# Development / IDE files
+.env
+.env.local
+.vscode/
+*.log
+
+# Git
+.git/
+.gitignore
+
+# Windows artifacts
+Thumbs.db
+Desktop.ini
