@@ -1,0 +1,110 @@
+services:
+
+  # ── PostgreSQL Database ──────────────────────────────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    container_name: equinox-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: equinox_nexus
+      POSTGRES_USER: equinox
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-equinox_secret_change_me}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - equinox-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U equinox -d equinox_nexus"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    ports:
+      - "5432:5432"  # Remove in production — expose only inside Docker network
+
+  # ── FastAPI Backend ──────────────────────────────────────────────────────────
+  backend:
+    build:
+      context: ./core
+      dockerfile: Dockerfile
+    container_name: equinox-backend
+    restart: unless-stopped
+    env_file:
+      - .env.production
+    environment:
+      # Override DB connection to use the postgres service (Docker DNS)
+      DB_DIALECT: postgres
+      DATABASE_URL: postgresql://equinox:${POSTGRES_PASSWORD:-equinox_secret_change_me}@postgres:5432/equinox_nexus
+      # ChromaDB will persist to the named volume mounted below
+      CHROMA_PERSIST_DIR: /app/chroma_data
+    volumes:
+      - chroma_data:/app/chroma_data
+    networks:
+      - equinox-net
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8000/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 90s  # Allow time for sentence-transformers to load on first run
+    # Do NOT expose port 8000 publicly — nginx proxies all traffic
+    expose:
+      - "8000"
+
+  # ── Next.js Frontend ─────────────────────────────────────────────────────────
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+      args:
+        # At build time, this tells the browser where to find the API
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost/api}
+    container_name: equinox-frontend
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+    networks:
+      - equinox-net
+    depends_on:
+      backend:
+        condition: service_healthy
+    expose:
+      - "3000"
+
+  # ── Nginx Reverse Proxy ───────────────────────────────────────────────────────
+  nginx:
+    image: nginx:1.27-alpine
+    container_name: equinox-nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"  # Ready for HTTPS — see nginx/nginx.conf SSL section
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/ssl:/etc/nginx/ssl:ro  # Mount SSL certs here (Let's Encrypt)
+    networks:
+      - equinox-net
+    depends_on:
+      - frontend
+      - backend
+    healthcheck:
+      test: ["CMD-SHELL", "nginx -t && curl -f http://localhost/api/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+# ── Named Volumes ─────────────────────────────────────────────────────────────
+volumes:
+  postgres_data:
+    name: equinox_postgres_data
+  chroma_data:
+    name: equinox_chroma_data
+
+# ── Networks ──────────────────────────────────────────────────────────────────
+networks:
+  equinox-net:
+    name: equinox_network
+    driver: bridge
