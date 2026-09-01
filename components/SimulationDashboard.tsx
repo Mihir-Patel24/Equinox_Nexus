@@ -1,12 +1,13 @@
 'use client';
 
 import { motion } from 'framer-motion';
-import { 
-  AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer
+import {
+  AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
+  BarChart, Bar, Cell, LabelList
 } from 'recharts';
-import { 
+import {
   TrendingUp, Shield, Award, FileText, ArrowUpRight, Brain,
-  Download, Share2, RefreshCw, CheckCircle, Database, Info
+  Download, Share2, RefreshCw, CheckCircle, Database, Info, Zap
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 
@@ -41,6 +42,16 @@ const CustomTooltip = ({ active, payload, label }: any) => {
 };
 
 export function SimulationDashboard({ data, onRerun }: SimulationDashboardProps) {
+  // ── Backend offline guard ──────────────────────────────────────────
+  if (!data?.scenarios || data.scenarios.length === 0) {
+    return (
+      <div style={{ textAlign: 'center', padding: '80px 20px' }}>
+        <div style={{ fontSize: '64px', marginBottom: '16px' }}>🧠</div>
+        <h2 style={{ fontSize: '24px', fontWeight: 700, color: 'white', marginBottom: '12px' }}>No simulation data yet</h2>
+        <p style={{ color: 'rgba(255,255,255,0.5)', maxWidth: '400px', margin: '0 auto' }}>Run a simulation to see your full Financial Twin report.</p>
+      </div>
+    );
+  }
   const wealthData = ['Year 1', 'Year 2', 'Year 3', 'Year 4', 'Year 5'].map((year, yearIndex) => {
     const yearData: any = { year };
     data.scenarios.forEach((scenario: any) => {
@@ -310,13 +321,10 @@ export function SimulationDashboard({ data, onRerun }: SimulationDashboardProps)
         style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '20px' }}
       >
         {data.scenarios.map((scenario: any, index: number) => (
-          <motion.div 
-            key={scenario.location} 
+          <motion.div
+            key={scenario.location}
             whileHover={{ scale: 1.02 }}
-            style={{
-              ...cardStyle,
-              padding: '24px'
-            }}
+            style={{ ...cardStyle, padding: '24px' }}
           >
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '20px' }}>
               <h4 style={{ fontWeight: 700, color: 'white', fontSize: '16px' }}>{scenario.location}</h4>
@@ -333,7 +341,7 @@ export function SimulationDashboard({ data, onRerun }: SimulationDashboardProps)
                 {scenario.risk_score < 0.2 ? 'Low Risk' : scenario.risk_score < 0.3 ? 'Medium Risk' : 'High Risk'}
               </div>
             </div>
-            
+
             <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
               <div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', marginBottom: '8px' }}>
@@ -349,7 +357,7 @@ export function SimulationDashboard({ data, onRerun }: SimulationDashboardProps)
                   }} />
                 </div>
               </div>
-              
+
               <div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', marginBottom: '8px' }}>
                   <span style={{ color: 'rgba(255,255,255,0.5)' }}>Quality Score</span>
@@ -364,7 +372,7 @@ export function SimulationDashboard({ data, onRerun }: SimulationDashboardProps)
                   }} />
                 </div>
               </div>
-              
+
               <div style={{ paddingTop: '12px', borderTop: '1px solid rgba(255,255,255,0.08)' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', marginBottom: '4px' }}>
                   <span style={{ color: 'rgba(255,255,255,0.5)' }}>Tax Burden</span>
@@ -379,6 +387,56 @@ export function SimulationDashboard({ data, onRerun }: SimulationDashboardProps)
           </motion.div>
         ))}
       </motion.div>
+
+      {/* XAI Factor Decomposition */}
+      {data.xai?.factors && (
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.35 }}
+          style={cardStyle}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '24px' }}>
+            <div style={{ padding: '10px', borderRadius: '14px', background: 'linear-gradient(135deg, #f59e0b 0%, #ef4444 100%)' }}>
+              <Zap style={{ width: '24px', height: '24px', color: 'white' }} />
+            </div>
+            <div>
+              <h3 style={{ fontSize: '20px', fontWeight: 700, color: 'white' }}>Explainable AI — Factor Decomposition</h3>
+              <p style={{ fontSize: '13px', color: 'rgba(255,255,255,0.45)', marginTop: '2px' }}>
+                Viability score: <strong style={{ color: '#f59e0b' }}>{data.xai.final_score ?? '—'}/100</strong>
+                {data.xai.confidence && (
+                  <> &nbsp;·&nbsp; 90% CI: [{data.xai.confidence.lower} – {data.xai.confidence.upper}]</>
+                )}
+              </p>
+            </div>
+          </div>
+          <div style={{ height: '200px', marginBottom: '16px' }}>
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={data.xai.factors} layout="vertical" margin={{ left: 16, right: 40, top: 4, bottom: 4 }}>
+                <XAxis type="number" domain={[0, 30]} stroke="rgba(255,255,255,0.3)" tick={{ fontSize: 11, fill: 'rgba(255,255,255,0.4)' }} />
+                <YAxis type="category" dataKey="name" width={120} stroke="rgba(255,255,255,0.3)" tick={{ fontSize: 12, fill: 'rgba(255,255,255,0.7)' }} />
+                <Tooltip
+                  contentStyle={{ background: 'rgba(15,15,30,0.95)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '10px', fontSize: '13px' }}
+                  formatter={(v: any) => [`${v} pts`, 'Contribution']}
+                />
+                <Bar dataKey="contribution" radius={[0, 6, 6, 0]}>
+                  {data.xai.factors.map((_: any, i: number) => (
+                    <Cell key={i} fill={['#667eea', '#f093fb', '#10b981', '#f59e0b', '#06b6d4'][i % 5]} />
+                  ))}
+                  <LabelList dataKey="contribution" position="right" style={{ fill: 'rgba(255,255,255,0.6)', fontSize: '12px' }} formatter={(v: any) => `${v}pts`} />
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+          {data.xai.narrative && (
+            <div style={{ padding: '16px', background: 'rgba(245,158,11,0.08)', borderRadius: '12px', border: '1px solid rgba(245,158,11,0.15)' }}>
+              <p style={{ fontSize: '13px', color: 'rgba(255,255,255,0.7)', lineHeight: 1.6, margin: 0 }}>
+                <strong style={{ color: '#f59e0b' }}>AI Narrative:</strong> {data.xai.narrative}
+              </p>
+            </div>
+          )}
+        </motion.div>
+      )}
 
       {/* AI Recommendations */}
       <motion.div
@@ -487,8 +545,11 @@ export function SimulationDashboard({ data, onRerun }: SimulationDashboardProps)
           <div>
             <div style={{ fontSize: '12px', fontWeight: 600, color: '#f59e0b', marginBottom: '4px' }}>Methodology Note</div>
             <p style={{ fontSize: '11px', color: 'rgba(255,255,255,0.6)', lineHeight: 1.5, margin: 0 }}>
-              Projections use Monte Carlo simulation with 10,000 iterations. Tax calculations based on current treaty rates and may vary. 
-              Cost of living data aggregated from multiple sources with regional adjustments. Past performance does not guarantee future results.
+              Projections use Monte Carlo simulation with 1,000 iterations across Base / Bull / Bear scenarios.
+              FX drift modelled via Prophet time-series forecasting.
+              Tax calculations based on current treaty rates and may vary.
+              Cost of living data aggregated from Open-Meteo, Numbeo, OECD, and World Bank with regional adjustments.
+              Past performance does not guarantee future results.
             </p>
           </div>
         </div>

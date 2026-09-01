@@ -1,32 +1,25 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { SimulationDashboard } from '@/components/SimulationDashboard';
 import { SimulationForm } from '@/components/SimulationForm';
 import { LoadingAnimation } from '@/components/LoadingAnimation';
 import { HeroSection } from '@/components/HeroSection';
-import { AgentShowcase } from '@/components/AgentShowcase';
-import { InteractiveGlobe } from '@/components/InteractiveGlobe';
-import { LiveMetrics } from '@/components/LiveMetrics';
-import { AIInsights } from '@/components/AIInsights';
 import { Sidebar } from '@/components/Sidebar';
 import { HamburgerMenu } from '@/components/HamburgerMenu';
-import { CompliancePack } from '@/components/CompliancePack';
-import { NeighborhoodHeatmap } from '@/components/NeighborhoodHeatmap';
-import { AgentSwarm } from '@/components/AgentSwarm';
-import { BlackSwanTesting } from '@/components/BlackSwanTesting';
-import { MonteCarloSimulation } from '@/components/MonteCarloSimulation';
-import { SourceGrounding } from '@/components/SourceGrounding';
-import { PrivacyVault } from '@/components/PrivacyVault';
-import { HyperLocalData } from '@/components/HyperLocalData';
-import { SemanticCrossMapping } from '@/components/SemanticCrossMapping';
-import { DocumentVerification } from '@/components/DocumentVerification';
-import { CulturalCommunication } from '@/components/CulturalCommunication';
-import { LifestyleTwins } from '@/components/LifestyleTwins';
-import { FederatedTrustScore } from '@/components/FederatedTrustScore';
+import { ChronosView } from '@/components/ChronosView';
+import { XAIView } from '@/components/XAIView';
+import { NexusView } from '@/components/NexusView';
+import { ActuaryView } from '@/components/ActuaryView';
+import { FiscalView } from '@/components/FiscalView';
+import { PayrollIntelView } from '@/components/PayrollIntelView';
+import { EvaluationView } from '@/components/EvaluationView';
+import { InteractiveGlobe } from '@/components/InteractiveGlobe';
 import { Toaster, toast } from 'react-hot-toast';
-import { ArrowUp, X } from 'lucide-react';
+import { Menu, TrendingUp, Brain, BarChart3, Zap } from 'lucide-react';
+
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 
 export default function Home() {
   const [simulationData, setSimulationData] = useState<any>(null);
@@ -39,26 +32,122 @@ export default function Home() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [activeView, setActiveView] = useState('dashboard');
   const [showEditProfile, setShowEditProfile] = useState(false);
-  const [profileData, setProfileData] = useState({
-    name: 'User',
-    email: 'user@example.com',
-    location: 'Your City',
-    income: '100000',
-    currency: '$',
-    targetCities: 'Berlin, Tokyo, Singapore'
+  const [savedTwins, setSavedTwins] = useState<any[]>([]);
+  const [twinsLoading, setTwinsLoading] = useState(false);
+  // ── Drift report state (autonomous twin loop) ─────────────────────────
+  const [activeTwinId, setActiveTwinId] = useState<string | null>(null);
+
+  // ── Profile persisted to localStorage ──────────────────────────────────
+  const [profileData, setProfileData] = useState(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const saved = localStorage.getItem('equinox_profile');
+        if (saved) return JSON.parse(saved);
+      } catch {}
+    }
+    return {
+      name: 'User',
+      email: 'user@example.com',
+      location: 'Your City',
+      income: '100000',
+      currency: '$',
+      targetCities: 'Berlin, Tokyo, Singapore'
+    };
   });
-  const [settings, setSettings] = useState({
-    emailNotifications: true,
-    pushNotifications: true,
-    agentAlerts: true,
-    zeroKnowledge: true,
-    dataEncryption: true,
-    anonymousAnalytics: true,
-    darkMode: true,
-    currencyFormat: true,
-    dateFormat: true
+
+  // ── Settings persisted to localStorage ─────────────────────────────────
+  const [settings, setSettings] = useState(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const saved = localStorage.getItem('equinox_settings');
+        if (saved) return JSON.parse(saved);
+      } catch {}
+    }
+    return {
+      emailNotifications: true,
+      pushNotifications: true,
+      agentAlerts: true,
+      zeroKnowledge: true,
+      dataEncryption: true,
+      anonymousAnalytics: true,
+      darkMode: true,
+      currencyFormat: true,
+      dateFormat: true
+    };
   });
   const [showHelpModal, setShowHelpModal] = useState<string | null>(null);
+
+  // Persist profile changes
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('equinox_profile', JSON.stringify(profileData));
+    }
+  }, [profileData]);
+
+  // Persist settings changes
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('equinox_settings', JSON.stringify(settings));
+    }
+  }, [settings]);
+
+  // Track last known auto_resimulations count to avoid repeat toasts
+  const lastResimCount = typeof window !== 'undefined'
+    ? { current: parseInt(sessionStorage.getItem('eq_resim_count') ?? '0', 10) }
+    : { current: 0 };
+
+  // ── Drift report fetcher — called after simulation + on 30s poll ──────
+  const fetchDriftReport = async (twinId: string) => {
+    try {
+      const res = await fetch(`${API_BASE}/twin/${twinId}/drift-report`);
+      if (!res.ok) return;
+      const driftData = await res.json();
+      if (driftData && driftData.auto_resimulations >= 0) {
+        // Toast if there are NEW autonomous re-simulations since last check
+        const newCount = driftData.auto_resimulations ?? 0;
+        const prevCount = lastResimCount.current;
+        if (newCount > prevCount && prevCount >= 0) {
+          const city = driftData.latest_drift_explanation?.city ?? 'your twin';
+          toast.success(
+            `Twin auto-updated: ${city} re-simulated autonomously. Open XAI to see what changed.`,
+            { duration: 6000, icon: '🔄' }
+          );
+          lastResimCount.current = newCount;
+          if (typeof window !== 'undefined') sessionStorage.setItem('eq_resim_count', String(newCount));
+        }
+        setSimulationData((prev: any) => prev ? { ...prev, drift_report: driftData } : prev);
+      }
+    } catch {
+      // Drift report is non-critical — fail silently
+    }
+  };
+
+  // ── 30s poll: keeps drift_report fresh so autonomous re-sims show up ──
+  useEffect(() => {
+    if (!activeTwinId) return;
+    // Initial fetch after a short delay (let server persist the twin first)
+    const initial = setTimeout(() => fetchDriftReport(activeTwinId), 3000);
+    // Then poll every 30s
+    const interval = setInterval(() => fetchDriftReport(activeTwinId), 30000);
+    return () => { clearTimeout(initial); clearInterval(interval); };
+  }, [activeTwinId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Load twins when navigating to saved/history views
+  const loadTwins = async () => {
+    setTwinsLoading(true);
+    try {
+      const res = await fetch(`${API_BASE}/twins`);
+      if (res.ok) {
+        const data = await res.json();
+        setSavedTwins(Array.isArray(data) ? data : []);
+      }
+    } catch {
+      setSavedTwins([]);
+    } finally {
+      setTwinsLoading(false);
+    }
+  };
+
 
   const handleSimulation = async (formData: any) => {
     setIsLoading(true);
@@ -82,8 +171,8 @@ export default function Home() {
       const salary: number = parseFloat(formData.current_salary) || 120000;
       const primaryTargetCity = targetCities[0] || 'Singapore';
 
-      // Connect to SSE stream
-      const response = await fetch('http://localhost:8000/simulate/stream', {
+      // Connect to SSE stream using env-configured API base
+      const response = await fetch(`${API_BASE}/simulate/stream`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -148,53 +237,157 @@ export default function Home() {
                 }
               } else if (payload.type === "simulation_complete") {
                 setStatusMessage(payload.message);
-                
+
                 const resData = payload.data;
                 const report = resData.final_report || {};
                 const proj = resData.wealth_projection || [];
-                const scenarios = resData.monte_carlo_result?.scenarios ?? [];
+                const mcResult = resData.monte_carlo_result || {};
+                const scenarios = mcResult.scenarios ?? [];
+                const xai = resData.xai_explanation || {};
+                const actData = resData.risk_analysis || {};
+                const fiscData = resData.expense_analysis || {};
+                const nexData = resData.compliance_analysis || {};
+                const di = resData.decision_intelligence || {};
+
+                // ── Build scenario list from MC simulation paths ──────────────
+                const mcPaths = mcResult.simulation_paths || {};
+                const p50 = mcPaths.p50 || [];
+                const mappedScenarios = scenarios.length > 0
+                  ? scenarios.map((s: any) => ({
+                      location: primaryTargetCity,
+                      year_1_wealth: p50[0] ?? proj[0]?.wealth ?? salary * 0.8,
+                      year_5_wealth: s.year_5_wealth ?? p50[4] ?? salary * 1.5,
+                      risk_score: actData.overall_risk_rating === 'Low' ? 0.12 : actData.overall_risk_rating === 'High' ? 0.40 : 0.25,
+                      quality_score: (actData.composite_score ?? 70) / 100,
+                      cost_increase: ((fiscData.col_multiplier ?? 1) - 1) * 100,
+                      tax_burden: (nexData.effective_rate ?? 0.30) * 100,
+                      hidden_costs: Math.round((fiscData.projected_expenses ?? (salary / 12 * 0.6)) * 12 * 0.08),
+                      risk_level: actData.overall_risk_rating ?? 'Medium',
+                      viability_score: report.relocation_viability_score ?? di.decision_viability_score ?? 70,
+                      tax_regime: nexData.tax_regime ?? report.tax_regime ?? 'Standard',
+                      dta_relief: nexData.dta_relief_applied ?? 0,
+                      net_savings: report.net_annual_savings ?? 0,
+                    }))
+                  : [{
+                      location: primaryTargetCity,
+                      year_1_wealth: p50[0] ?? proj[0]?.wealth ?? salary * 0.8,
+                      year_5_wealth: p50[4] ?? proj[4]?.wealth ?? salary * 1.5,
+                      risk_score: actData.overall_risk_rating === 'Low' ? 0.12 : actData.overall_risk_rating === 'High' ? 0.40 : 0.25,
+                      quality_score: (actData.composite_score ?? 70) / 100,
+                      cost_increase: ((fiscData.col_multiplier ?? 1) - 1) * 100,
+                      tax_burden: (nexData.effective_rate ?? 0.30) * 100,
+                      hidden_costs: Math.round((fiscData.projected_expenses ?? (salary / 12 * 0.6)) * 12 * 0.08),
+                      risk_level: actData.overall_risk_rating ?? 'Medium',
+                      viability_score: report.relocation_viability_score ?? di.decision_viability_score ?? 70,
+                      tax_regime: nexData.tax_regime ?? report.tax_regime ?? 'Standard',
+                      dta_relief: nexData.dta_relief_applied ?? 0,
+                      net_savings: report.net_annual_savings ?? 0,
+                    }];
+
+                // ── Build recommendations from real LLM reasoning ─────────────
+                const recommendations: string[] = [];
+                if (di.dynamic_reasoning) recommendations.push(di.dynamic_reasoning);
+                if (report.key_advantages) report.key_advantages.forEach((a: string) => recommendations.push(`✅ ${a}`));
+                if (report.key_risks) report.key_risks.forEach((r: string) => recommendations.push(`⚠️ ${r}`));
+                if (recommendations.length === 0) {
+                  recommendations.push(`Viability score: ${report.relocation_viability_score ?? 70}/100 for ${primaryTargetCity}`);
+                  recommendations.push(`Effective tax rate: ${((nexData.effective_rate ?? 0.30) * 100).toFixed(1)}% (${nexData.tax_regime ?? 'Standard'})`);
+                  if (actData.composite_score) recommendations.push(`Quality of Life composite score: ${actData.composite_score}/100 (AQI: ${actData.air_quality_index})`);
+                }
 
                 const backendResult = {
-                  scenarios: scenarios.map((s: any) => ({
-                    location: primaryTargetCity,
-                    year_1_wealth: proj[0]?.wealth ?? salary * 0.8,
-                    year_5_wealth: s.final_wealth ?? salary * 1.5,
-                    risk_score: resData.risk_analysis?.overall_risk_rating === 'Low' ? 0.15 : resData.risk_analysis?.overall_risk_rating === 'High' ? 0.40 : 0.25,
-                    quality_score: (report.quality_of_life_score ?? 70) / 100,
-                    cost_increase: ((report.col_multiplier ?? 1) - 1) * 100,
-                    tax_burden: (report.effective_tax_rate ?? 0.30) * 100,
-                    hidden_costs: (report.annual_expenses ?? salary * 0.6) * 0.08,
-                    risk_level: resData.risk_analysis?.overall_risk_rating ?? 'Medium',
-                    viability_score: report.relocation_viability_score ?? 70,
-                    tax_regime: report.tax_regime ?? 'Standard',
-                    dta_relief: report.dta_relief ?? 0,
-                    net_savings: report.net_annual_savings ?? 0,
-                    data_sources: report.data_sources ?? []
-                  })),
-                  risk_analysis: resData.risk_analysis,
-                  expense_analysis: resData.expense_analysis,
-                  compliance_summary: resData.compliance_analysis
-                    ? {
-                        ...resData.compliance_analysis,
-                        total_compliance_cost: resData.compliance_analysis.total_compliance_cost ?? Math.round((salary * 0.6) * 0.08)
-                      }
-                    : { visa_complexity: 'Medium', tax_treaty_benefits: '15% relief', regulatory_timeline: '45-60 days', total_compliance_cost: 18500 },
-                  recommendations: report.key_advantages?.map((adv: string) => `Advantage: ${adv}`) 
-                    .concat(report.key_risks?.map((r: string) => `Risk: ${r}`) ?? []) ?? [
-                    `Relocation viability score: ${report.relocation_viability_score ?? 70}/100`,
-                    `Effective tax rate: ${((report.effective_tax_rate ?? 0.3) * 100).toFixed(1)}%`
-                  ],
+                  // ── Dashboard data ──────────────────────────────────────────
+                  scenarios: mappedScenarios,
+                  compliance_summary: {
+                    ...nexData,
+                    total_compliance_cost: nexData.total_compliance_cost ?? Math.round((fiscData.projected_expenses ?? (salary / 12 * 0.6)) * 12 * 0.10),
+                    visa_complexity: nexData.visa_requirements ?? nexData.visa_complexity ?? 'Skilled Worker',
+                    tax_treaty_benefits: nexData.treaty_label ?? nexData.tax_treaty_benefits ?? 'DTA applied',
+                    regulatory_timeline: nexData.regulatory_timeline ?? '45-60 days',
+                  },
+                  recommendations,
                   trust_score: {
-                    score: report.relocation_viability_score ?? 80,
+                    score: report.relocation_viability_score ?? di.decision_viability_score ?? 80,
                     components: {
-                      payment_reliability: 90,
-                      financial_stability: 85,
-                      income_verification: 80,
-                      debt_management: 75
+                      payment_reliability: Math.min(100, Math.round((nexData.effective_rate ? (1 - nexData.effective_rate) * 100 : 70))),
+                      financial_stability: Math.min(100, Math.round((actData.composite_score ?? 75))),
+                      income_verification: Math.min(100, Math.round(((fiscData.col_multiplier ? 2 - fiscData.col_multiplier : 1) * 80))),
+                      debt_management: Math.min(100, Math.round((report.relocation_viability_score ?? 75))),
                     }
                   },
-                  rawResults: resData
+                  // ── Agent deep-dive data ────────────────────────────────────
+                  actuary: {
+                    ...actData,
+                    city: primaryTargetCity,
+                    monthly_expenses: fiscData.projected_expenses,
+                    annual_expenses: (fiscData.projected_expenses ?? 0) * 12,
+                    net_annual_savings: report.net_annual_savings ?? 0,
+                  },
+                  fiscal: {
+                    ...fiscData,
+                    city: primaryTargetCity,
+                    monthly_expenses: fiscData.projected_expenses ?? 0,
+                    annual_expenses: (fiscData.projected_expenses ?? 0) * 12,
+                    effective_tax_rate: nexData.effective_rate ?? 0.30,
+                    tax_regime: nexData.tax_regime ?? 'Standard',
+                    net_annual_savings: report.net_annual_savings ?? 0,
+                    lifestyle_key: fiscData.lifestyle_key ?? 'standard',
+                  },
+                  nexus: {
+                    ...nexData,
+                    city: primaryTargetCity,
+                    // dta_relief_applied is the actual key returned by NexusAgent
+                    treaty_savings: Math.round((nexData.dta_relief_applied ?? 0) * salary),
+                    effective_tax_rate_pct: ((nexData.effective_rate ?? 0.30) * 100).toFixed(1),
+                    dta_pct: Math.round((nexData.dta_relief_applied ?? 0) * 100),
+                    compliance_score: nexData.compliance_score ?? 100,
+                    // compliance_notes is a string[] from NexusAgent — join to display
+                    raw_strategy: Array.isArray(nexData.compliance_notes)
+                      ? nexData.compliance_notes.join(' ')
+                      : (nexData.compliance_notes ?? nexData.compliance_brief_excerpt ?? di.dynamic_reasoning ?? ''),
+                  },
+                  // ── XAI factor decomposition ────────────────────────────────
+                  xai: {
+                    ...xai,
+                    // factor_contributions items use 'factor' key (not 'name') from explainer.py
+                    factors: xai.factor_contributions
+                      ? xai.factor_contributions.map((f: any) => ({ ...f, name: f.factor ?? f.name }))
+                      : [
+                          { name: 'Tax Efficiency', contribution: Math.round((1 - (nexData.effective_rate ?? 0.30)) * 30), weight: 0.30 },
+                          { name: 'Cost of Living', contribution: Math.round((1 - Math.min(1, fiscData.col_multiplier ?? 1)) * 20 + 10), weight: 0.20 },
+                          { name: 'Quality of Life', contribution: Math.round((actData.composite_score ?? 70) * 0.30), weight: 0.30 },
+                          { name: 'FX Risk', contribution: Math.round((1 - (mcResult.risk_metrics?.fx_volatility_used ?? 0.08) * 5) * 10), weight: 0.10 },
+                          { name: 'Savings Potential', contribution: Math.round(Math.max(0, (report.net_annual_savings ?? 0) / salary * 100) * 0.10), weight: 0.10 },
+                        ],
+                    // xai.viability_score is the correct key (not final_score)
+                    final_score: xai.viability_score ?? xai.final_score ?? report.relocation_viability_score ?? 70,
+                    // xai.executive_summary is the text field (not narrative)
+                    narrative: xai.executive_summary ?? xai.narrative ?? di.dynamic_reasoning ?? '',
+                    // confidence_interval is [lower, upper] array from explainer.py
+                    confidence: Array.isArray(xai.confidence_interval)
+                      ? { lower: xai.confidence_interval[0], upper: xai.confidence_interval[1] }
+                      : (xai.confidence_interval ?? { lower: 62, upper: 88 }),
+                  },
+                  // ── Chronos Monte Carlo ─────────────────────────────────────
+                  chronos: {
+                    ...mcResult,
+                    city: primaryTargetCity,
+                    simulation_paths: mcPaths,
+                    final_year_stats: mcResult.final_year_stats ?? {},
+                    risk_metrics: mcResult.risk_metrics ?? {},
+                    scenarios: mcResult.scenarios ?? [],
+                  },
+                  // ── Decision Intelligence ───────────────────────────────────
+                  decision_intelligence: di,
+                  // ── Raw full state ──────────────────────────────────────────
+                  rawResults: resData,
                 };
+
+                // Persist twin_id + activate drift poll
+                if (resData.twin_id) {
+                  localStorage.setItem('equinox_twin_id', resData.twin_id);
+                  setActiveTwinId(resData.twin_id);
+                }
 
                 setSimulationData(backendResult);
                 setShowResults(true);
@@ -215,6 +408,7 @@ export default function Home() {
       console.warn("Backend streaming failed or was interrupted, falling back to local mocks:", err);
     }
 
+    // ── Fallback: try the REST /simulate endpoint for multi-city ──────────
     try {
       const targetCities: string[] = formData.target_locations.filter((l: string) => l.trim() !== '');
       const salary: number = parseFloat(formData.current_salary);
@@ -224,7 +418,7 @@ export default function Home() {
       try {
         const results = await Promise.all(
           targetCities.map((city: string) =>
-            fetch('http://localhost:8000/simulate', {
+            fetch(`${API_BASE}/simulate`, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({
@@ -241,30 +435,45 @@ export default function Home() {
         backendScenarios = results.map((res: any) => {
           const report = res.data?.final_report || {};
           const proj = res.data?.wealth_projection || [];
+          const riskData = res.data?.risk_analysis || {};
+          const expData = res.data?.expense_analysis || {};
+          const nexData = res.data?.compliance_analysis || {};
           return {
             location: res.city,
             year_1_wealth: proj[0]?.wealth ?? salary * 0.8,
             year_5_wealth: proj[4]?.wealth ?? salary * 1.5,
-            risk_score: res.data?.risk_analysis?.overall_risk_rating === 'Low' ? 0.15 : res.data?.risk_analysis?.overall_risk_rating === 'High' ? 0.40 : 0.25,
-            quality_score: (report.quality_of_life_score ?? 70) / 100,
-            cost_increase: ((report.col_multiplier ?? 1) - 1) * 100,
-            tax_burden: (report.effective_tax_rate ?? 0.30) * 100,
-            hidden_costs: (report.annual_expenses ?? salary * 0.6) * 0.08,
-            risk_level: res.data?.risk_analysis?.overall_risk_rating ?? 'Medium',
+            risk_score: riskData.overall_risk_rating === 'Low' ? 0.12 : riskData.overall_risk_rating === 'High' ? 0.40 : 0.25,
+            quality_score: (riskData.composite_score ?? 70) / 100,
+            cost_increase: ((expData.col_multiplier ?? 1) - 1) * 100,
+            tax_burden: (nexData.effective_rate ?? report.effective_tax_rate ?? 0.30) * 100,
+            hidden_costs: Math.round((expData.projected_expenses ?? salary / 12 * 0.6) * 12 * 0.08),
+            risk_level: riskData.overall_risk_rating ?? 'Medium',
             viability_score: report.relocation_viability_score ?? 70,
-            tax_regime: report.tax_regime ?? 'Standard',
-            dta_relief: report.dta_relief ?? 0,
+            tax_regime: nexData.tax_regime ?? report.tax_regime ?? 'Standard',
+            dta_relief: nexData.dta_relief ?? 0,
             net_savings: report.net_annual_savings ?? 0,
-            data_sources: report.data_sources ?? []
           };
         });
         backendCompliance = results[0]?.data?.compliance_analysis ?? {};
       } catch (_) {
-        await new Promise(r => setTimeout(r, 1500));
+        await new Promise(r => setTimeout(r, 800));
       }
 
-      // City database with unique metrics for each city
-      const cityData: Record<string, { wealthMultiplier1: number; wealthMultiplier5: number; riskScore: number; qualityScore: number; costIncrease: number; taxBurden: number; hiddenCosts: number; riskLevel: string }> = {
+      // ── Backend offline: show error rather than fake data ───────────────
+      if (!backendScenarios) {
+        setSimulationData({
+          _backendOffline: true,
+          message: 'Could not connect to the Equinox Nexus backend. Start the backend server with: cd core && uvicorn main:app --reload'
+        });
+        setShowResults(true);
+        setActiveView('results');
+        setIsLoading(false);
+        toast.error('Backend offline — start the Python server to run real AI simulations', { duration: 5000 });
+        return;
+      }
+
+      // Placeholder for legacy city lookup — unused when backend is online
+      const cityData: Record<string, any> = {
         'Singapore': { wealthMultiplier1: 0.82, wealthMultiplier5: 1.58, riskScore: 0.12, qualityScore: 0.95, costIncrease: 22.1, taxBurden: 18.5, hiddenCosts: 15200, riskLevel: 'Low' },
         'Berlin, Germany': { wealthMultiplier1: 0.92, wealthMultiplier5: 1.62, riskScore: 0.18, qualityScore: 0.91, costIncrease: 8.7, taxBurden: 38.2, hiddenCosts: 9600, riskLevel: 'Low' },
         'Tokyo, Japan': { wealthMultiplier1: 0.78, wealthMultiplier5: 1.48, riskScore: 0.15, qualityScore: 0.93, costIncrease: 18.5, taxBurden: 28.5, hiddenCosts: 14200, riskLevel: 'Low' },
@@ -856,109 +1065,47 @@ export default function Home() {
         'Tiruppur': { wealthMultiplier1: 0.69, wealthMultiplier5: 1.21, riskScore: 0.26, qualityScore: 0.70, costIncrease: 3.5, taxBurden: 30.0, hiddenCosts: 1850, riskLevel: 'Medium' },
         'Bhubaneswar, India': { wealthMultiplier1: 0.69, wealthMultiplier5: 1.22, riskScore: 0.26, qualityScore: 0.72, costIncrease: 4.0, taxBurden: 30.0, hiddenCosts: 2050, riskLevel: 'Medium' },
       };
-
-      // Get the primary selected city
-      const primaryCity = formData.target_locations[0] || 'London, UK';
-      
-      // Find the best matching city key - IMPROVED matching
-      const findCityKey = (cityName: string): string => {
-        const normalizedInput = cityName.toLowerCase().trim();
-        for (const key of Object.keys(cityData)) {
-          if (key.toLowerCase() === normalizedInput) return key;
-        }
-        for (const key of Object.keys(cityData)) {
-          const cityPart = key.toLowerCase().split(',')[0].trim();
-          if (cityPart === normalizedInput) return key;
-        }
-        for (const key of Object.keys(cityData)) {
-          if (key.toLowerCase().includes(normalizedInput) || normalizedInput.includes(key.toLowerCase().split(',')[0])) {
-            return key;
-          }
-        }
-        return cityName;
-      };
-
-      const userSelectedCities = formData.target_locations
-        .filter((loc: string) => loc && loc.trim() !== '')
-        .map((loc: string) => findCityKey(loc));
-      
-      const uniqueCities = Array.from(new Set(userSelectedCities)) as string[];
-      
-      const buildScenario = (cityKey: string, salary: number) => {
-        const data = cityData[cityKey] || {
-          wealthMultiplier1: 0.70,
-          wealthMultiplier5: 1.25,
-          riskScore: 0.30,
-          qualityScore: 0.75,
-          costIncrease: 10.0,
-          taxBurden: 30.0,
-          hiddenCosts: 8000,
-          riskLevel: 'Medium'
-        };
-        return {
-          location: cityKey,
-          year_1_wealth: salary * data.wealthMultiplier1,
-          year_5_wealth: salary * data.wealthMultiplier5,
-          risk_score: data.riskScore,
-          quality_score: data.qualityScore,
-          cost_increase: data.costIncrease,
-          tax_burden: data.taxBurden,
-          hidden_costs: data.hiddenCosts,
-          risk_level: data.riskLevel
-        };
-      };
-
-      const scenarios = backendScenarios ?? uniqueCities.map((city: string) =>
-        buildScenario(city, salary)
+      // ── Build final result from REST fallback (multi-city) ──────────────
+      const bestCity = backendScenarios.reduce((best: any, curr: any) =>
+        curr.year_5_wealth > best.year_5_wealth ? curr : best
       );
-
-      const bestCity = scenarios.reduce((best: any, current: any) =>
-        current.year_5_wealth > best.year_5_wealth ? current : best
-      );
-
-      const primaryCityKey = backendScenarios
-        ? (scenarios[0]?.location ?? 'Unknown')
-        : (userSelectedCities?.[0] ?? 'London, UK');
+      const firstScenario = backendScenarios[0] || {};
 
       const mockResult = {
-        scenarios,
-        risk_analysis: {
-          health_risks: { respiratory: 15, lifestyle: 8, healthcare_access: 5 },
-          financial_risks: { currency_volatility: 12, tax_changes: 8, cost_inflation: 18 },
-          social_risks: { language_barrier: 25, cultural_adaptation: 15, social_isolation: 12 }
-        },
+        scenarios: backendScenarios,
         compliance_summary: backendCompliance && Object.keys(backendCompliance).length > 0
-          ? { ...backendCompliance, total_compliance_cost: Math.round(scenarios[0]?.hidden_costs ?? 8000) }
-          : { visa_complexity: 'Medium', tax_treaty_benefits: '15% relief on double taxation', regulatory_timeline: '45-60 days', total_compliance_cost: 18500 },
-        recommendations: backendScenarios ? [
-          `${bestCity.location} offers the best 5-year wealth trajectory - projected $${Math.round(bestCity.year_5_wealth).toLocaleString()} by Year 5`,
-          `Effective tax rate in ${scenarios[0]?.location}: ${(scenarios[0]?.tax_burden ?? 0).toFixed(1)}% (${scenarios[0]?.tax_regime ?? 'Standard'})`,
-          `DTA relief of ${((scenarios[0]?.dta_relief ?? 0) * 100).toFixed(0)}% applied - saves $${Math.round((scenarios[0]?.dta_relief ?? 0) * salary).toLocaleString()} annually`,
-          `Monthly cost of living in ${scenarios[0]?.location} is ${(scenarios[0]?.cost_increase ?? 0) > 0 ? '+' : ''}${(scenarios[0]?.cost_increase ?? 0).toFixed(1)}% vs your current city`,
-          `Relocation viability score: ${scenarios[0]?.viability_score ?? 70}/100 - powered by Open-Meteo AQI + OECD Tax Data 2024`
-        ] : [
-          `${bestCity.location} offers the best 5-year wealth trajectory with ${((bestCity.year_5_wealth / salary - 1) * 100).toFixed(0)}% growth potential`,
-          `${primaryCityKey} has a quality of life score of ${(cityData[primaryCityKey]?.qualityScore * 100 || 88).toFixed(0)}%`,
-          `Budget additional $${(cityData[primaryCityKey]?.hiddenCosts || 12800).toLocaleString()} annually for hidden bureaucracy and compliance costs`,
-          `Tax burden in ${primaryCityKey}: ${cityData[primaryCityKey]?.taxBurden || 32}% - consider tax treaty benefits`,
-          'Social integration costs will add approximately $3,200/year to maintain lifestyle'
+          ? {
+              ...backendCompliance,
+              total_compliance_cost: backendCompliance.total_compliance_cost ?? Math.round(firstScenario.hidden_costs ?? 8000),
+              visa_complexity: backendCompliance.visa_requirements ?? backendCompliance.visa_complexity ?? 'Skilled Worker',
+              tax_treaty_benefits: backendCompliance.treaty_label ?? backendCompliance.tax_treaty_benefits ?? 'DTA applied',
+              regulatory_timeline: backendCompliance.regulatory_timeline ?? '45-60 days',
+            }
+          : { visa_complexity: 'Medium', tax_treaty_benefits: '15% DTA relief', regulatory_timeline: '45-60 days', total_compliance_cost: 18500 },
+        recommendations: [
+          `${bestCity.location} offers the best 5-year trajectory — projected $${Math.round(bestCity.year_5_wealth).toLocaleString()}`,
+          `Effective tax rate in ${firstScenario.location}: ${(firstScenario.tax_burden ?? 30).toFixed(1)}% (${firstScenario.tax_regime ?? 'Standard'})`,
+          `DTA relief: ${((firstScenario.dta_relief ?? 0) * 100).toFixed(0)}% — saves $${Math.round((firstScenario.dta_relief ?? 0) * salary).toLocaleString()} annually`,
+          `Monthly CoL is ${(firstScenario.cost_increase ?? 0) > 0 ? '+' : ''}${(firstScenario.cost_increase ?? 0).toFixed(1)}% vs your current city`,
+          `Viability score: ${firstScenario.viability_score ?? 70}/100 — powered by Actuary • Fiscal Ghost • Nexus RAG`
         ],
         trust_score: {
-          score: 87.3,
+          score: firstScenario.viability_score ?? 80,
           components: {
-            payment_reliability: 92,
-            financial_stability: 85,
+            payment_reliability: 90,
+            financial_stability: Math.round((firstScenario.quality_score ?? 0.85) * 100),
             income_verification: 89,
             debt_management: 83
           }
-        }
+        },
       };
-      
+
       setSimulationData(mockResult);
       setShowResults(true);
       setActiveView('results');
     } catch (error) {
       console.error('Simulation failed:', error);
+      toast.error('Simulation failed — check console for details.');
     } finally {
       setIsLoading(false);
     }
@@ -967,14 +1114,21 @@ export default function Home() {
   const handleNavigate = (viewId: string) => {
     setActiveView(viewId);
     setSidebarOpen(false);
-    setShowResults(false);
+    // Don’t reset showResults when navigating to agent deep-dive views
+    if (!['actuary', 'fiscal', 'nexus'].includes(viewId)) {
+      setShowResults(false);
+    }
     window.scrollTo({ top: 0, behavior: 'smooth' });
+    // Load twins list when navigating to saved/history
+    if (viewId === 'saved' || viewId === 'history') {
+      loadTwins();
+    }
   };
 
   const renderContent = () => {
     if (isLoading) {
       return (
-        <LoadingAnimation 
+        <LoadingAnimation
           currentStep={currentStep}
           completedSteps={completedSteps}
           statusMessage={statusMessage}
@@ -983,1037 +1137,395 @@ export default function Home() {
       );
     }
 
-    if (showResults && simulationData) {
-      return <SimulationDashboard data={simulationData} onRerun={() => {
-        setShowResults(false);
-        setActiveView('simulations');
-      }} />;
+    // ── Backend offline state ───────────────────────────────────────────────
+    if (showResults && simulationData?._backendOffline) {
+      return (
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '70vh', gap: '24px', textAlign: 'center', padding: '40px 20px' }}>
+          <div style={{ fontSize: '64px' }}>⚡</div>
+          <h2 style={{ fontSize: '28px', fontWeight: 700, color: 'white' }}>Backend Offline</h2>
+          <p style={{ color: 'rgba(255,255,255,0.6)', fontSize: '16px', maxWidth: '520px', lineHeight: 1.7 }}>
+            The Equinox Nexus AI backend is not running. All 5 AI agents require the Python backend to generate real simulations.
+          </p>
+          <div style={{ background: 'rgba(0,0,0,0.5)', borderRadius: '14px', padding: '20px 28px', border: '1px solid rgba(255,255,255,0.1)', fontFamily: 'monospace', fontSize: '14px', color: '#a78bfa', textAlign: 'left' }}>
+            <div style={{ color: 'rgba(255,255,255,0.4)', marginBottom: '8px' }}># Start the Python backend</div>
+            <div>cd core</div>
+            <div>uvicorn main:app --reload --port 8000</div>
+          </div>
+          <motion.button
+            whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}
+            onClick={() => { setShowResults(false); setActiveView('simulations'); }}
+            style={{ padding: '14px 32px', background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)', border: 'none', borderRadius: '14px', color: 'white', fontSize: '15px', fontWeight: 600, cursor: 'pointer' }}
+          >
+            Try Again
+          </motion.button>
+        </div>
+      );
     }
 
     switch (activeView) {
-      case 'compliance':
+      // ── Simulation Results Overview ──────────────────────────────────────
+      case 'results':
+        if (simulationData) {
+          return <SimulationDashboard data={simulationData} onRerun={() => { setShowResults(false); setActiveView('simulations'); }} />;
+        }
         return (
-          <>
-            <CompliancePack location="Berlin, Germany" userProfile={{}} />
-            <div style={{ marginTop: '32px' }}>
-              <DocumentVerification />
-            </div>
-            <div style={{ marginTop: '32px' }}>
-              <CulturalCommunication />
-            </div>
-          </>
+          <div style={{ textAlign: 'center', padding: '80px 20px' }}>
+            <div style={{ fontSize: '56px', marginBottom: '16px' }}>🧠</div>
+            <h2 style={{ fontSize: '24px', fontWeight: 700, color: 'white', marginBottom: '12px' }}>No simulation yet</h2>
+            <p style={{ color: 'rgba(255,255,255,0.5)', marginBottom: '24px' }}>Run a simulation to see your full Financial Twin report.</p>
+            <motion.button
+              whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}
+              onClick={() => setActiveView('simulations')}
+              style={{ padding: '12px 28px', background: 'linear-gradient(135deg, #667eea, #764ba2)', border: 'none', borderRadius: '12px', color: 'white', fontWeight: 600, cursor: 'pointer', fontSize: '14px' }}
+            >
+              Start Simulation →
+            </motion.button>
+          </div>
         );
-      
-      case 'heatmap':
-        return <NeighborhoodHeatmap city="Tokyo" />;
-      
-      case 'swarm':
-        return <AgentSwarm />;
-      
-      case 'blackswan':
+
+      // ── Simulation Form ──────────────────────────────────────────────────
+      case 'simulations':
         return (
-          <>
-            <BlackSwanTesting />
-            <div style={{ marginTop: '32px' }}>
-              <MonteCarloSimulation />
+          <div style={{ maxWidth: '820px', margin: '0 auto' }}>
+            <div style={{ textAlign: 'center', marginBottom: '40px' }}>
+              <h2 style={{ fontSize: '32px', fontWeight: 800, color: 'white', marginBottom: '8px' }}>New Simulation</h2>
+              <p style={{ color: 'rgba(255,255,255,0.5)', fontSize: '16px' }}>Configure your global relocation analysis</p>
             </div>
-          </>
+            <div style={{
+              background: 'linear-gradient(135deg, rgba(102,126,234,0.1) 0%, rgba(118,75,162,0.05) 100%)',
+              backdropFilter: 'blur(24px)',
+              border: '1px solid rgba(102,126,234,0.2)',
+              borderRadius: '28px', padding: '40px'
+            }}>
+              <SimulationForm onSubmit={handleSimulation} isLoading={isLoading} />
+            </div>
+          </div>
         );
-      
+
+      // ── AI Intelligence Views ────────────────────────────────────────────
+      case 'chronos':
+        return <ChronosView data={simulationData} />;
+
+      case 'xai':
+        return <XAIView data={simulationData} />;
+
+      case 'eval':
+        return <EvaluationView data={simulationData} />;
+
+      case 'decision': {
+        const di = simulationData?.decision_intelligence || simulationData?.rawResults?.decision_intelligence || {};
+        const score = di.llm_viability_score;
+        const reasoning = di.llm_reasoning || '';
+        const model = di.model_used || 'Groq llama-3.3-70b-versatile';
+        const scoreColor = score >= 75 ? '#10b981' : score >= 55 ? '#eab308' : '#ef4444';
+        return (
+          <div style={{ maxWidth: '860px', margin: '0 auto' }}>
+            <div style={{ textAlign: 'center', marginBottom: '40px' }}>
+              <div style={{ display: 'inline-flex', alignItems: 'center', gap: '10px', background: 'rgba(6,182,212,0.1)', border: '1px solid rgba(6,182,212,0.25)', borderRadius: '50px', padding: '8px 20px', marginBottom: '16px' }}>
+                <span style={{ fontSize: '14px' }}>⚡</span>
+                <span style={{ color: '#22d3ee', fontSize: '13px', fontWeight: 600 }}>{model}</span>
+              </div>
+              <h2 style={{ fontSize: '32px', fontWeight: 800, color: 'white', marginBottom: '8px' }}>Decision Intelligence</h2>
+              <p style={{ color: 'rgba(255,255,255,0.5)', fontSize: '16px' }}>LLM-synthesized verdict on your relocation viability</p>
+            </div>
+            {!di || !reasoning ? (
+              <div style={{ textAlign: 'center', padding: '80px 20px', background: 'rgba(255,255,255,0.03)', borderRadius: '24px', border: '1px solid rgba(255,255,255,0.08)' }}>
+                <span style={{ fontSize: '48px', display: 'block', marginBottom: '16px' }}>⚡</span>
+                <h3 style={{ color: 'rgba(255,255,255,0.5)', fontWeight: 600, marginBottom: '8px' }}>No DI data yet</h3>
+                <p style={{ color: 'rgba(255,255,255,0.3)', fontSize: '14px' }}>Run a simulation to see the Groq LLM decision synthesis</p>
+              </div>
+            ) : (
+              <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
+                {/* Score Card */}
+                <div style={{ display: 'grid', gridTemplateColumns: '220px 1fr', gap: '24px', marginBottom: '24px', alignItems: 'stretch' }}>
+                  <div style={{ background: `linear-gradient(135deg, ${scoreColor}15 0%, rgba(15,15,30,0.95) 100%)`, border: `1px solid ${scoreColor}30`, borderRadius: '24px', padding: '32px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', textAlign: 'center' }}>
+                    <div style={{ fontSize: '64px', fontWeight: 900, color: 'white', lineHeight: 1 }}>{score?.toFixed(0) ?? '—'}</div>
+                    <div style={{ fontSize: '13px', color: 'rgba(255,255,255,0.4)', marginTop: '4px' }}>/ 100</div>
+                    <div style={{ marginTop: '12px', padding: '6px 16px', background: `${scoreColor}20`, borderRadius: '20px', fontSize: '13px', color: scoreColor, fontWeight: 700 }}>
+                      {score >= 75 ? 'Highly Viable' : score >= 55 ? 'Moderately Viable' : 'Challenging'}
+                    </div>
+                    <div style={{ fontSize: '11px', color: 'rgba(255,255,255,0.3)', marginTop: '10px' }}>LLM Viability Score</div>
+                  </div>
+                  <div style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '24px', padding: '32px' }}>
+                    <div style={{ fontSize: '12px', fontWeight: 700, color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase', letterSpacing: '0.8px', marginBottom: '14px' }}>
+                      LLM Reasoning
+                    </div>
+                    <p style={{ color: 'rgba(255,255,255,0.8)', fontSize: '15px', lineHeight: 1.8 }}>
+                      {reasoning || 'No reasoning available.'}
+                    </p>
+                  </div>
+                </div>
+                <div style={{ padding: '12px 18px', background: 'rgba(255,255,255,0.03)', borderRadius: '10px', border: '1px solid rgba(255,255,255,0.06)' }}>
+                  <span style={{ fontSize: '11px', color: 'rgba(255,255,255,0.3)' }}>🤖 Model: {model}</span>
+                </div>
+              </motion.div>
+            )}
+          </div>
+        );
+      }
+
+      // ── Agent Deep-Dive Views ────────────────────────────────────────────
+      case 'actuary':
+        return <ActuaryView data={simulationData} />;
+
+      case 'fiscal':
+        return <FiscalView data={simulationData} />;
+
+      case 'payroll':
+        return <PayrollIntelView />;
+
+      case 'nexus':
+        return <NexusView data={simulationData} />;
+
+      // ── Globe View ───────────────────────────────────────────────────────
       case 'globe':
         return (
           <>
-            <div style={{ marginBottom: '32px', textAlign: 'center' }}>
-              <h2 style={{ fontSize: '32px', fontWeight: 700, color: 'white', marginBottom: '8px' }}>
-                Global Opportunity Map
-              </h2>
-              <p style={{ color: 'rgba(255,255,255,0.6)', fontSize: '16px' }}>
-                Explore real-time migration opportunities worldwide
-              </p>
+            <div style={{ textAlign: 'center', marginBottom: '32px' }}>
+              <h2 style={{ fontSize: '32px', fontWeight: 800, color: 'white', marginBottom: '8px' }}>Global Opportunity Map</h2>
+              <p style={{ color: 'rgba(255,255,255,0.5)', fontSize: '16px' }}>Click any city to run an instant AI simulation</p>
             </div>
-            <InteractiveGlobe onRunAnalysis={(cityName, country) => {
+            <InteractiveGlobe onRunAnalysis={(cityName: string, country: string) => {
               toast.success(`Starting analysis for ${cityName}, ${country}...`, { duration: 2000 });
-              handleSimulation({
-                current_salary: 95000,
-                target_locations: [`${cityName}, ${country}`],
-                risk_tolerance: 'moderate'
-              });
+              handleSimulation({ current_salary: 95000, target_locations: [`${cityName}, ${country}`], risk_tolerance: 'moderate' });
             }} />
           </>
         );
 
-      case 'simulations':
-        return (
-          <>
-            <div style={{ marginBottom: '32px', textAlign: 'center' }}>
-              <h2 style={{ fontSize: '32px', fontWeight: 700, color: 'white', marginBottom: '8px' }}>
-                Run Simulation
-              </h2>
-              <p style={{ color: 'rgba(255,255,255,0.6)', fontSize: '16px' }}>
-                Configure and run your financial simulation
-              </p>
-            </div>
-            <div style={{
-              background: 'linear-gradient(135deg, rgba(102, 126, 234, 0.1) 0%, rgba(118, 75, 162, 0.05) 100%)',
-              backdropFilter: 'blur(24px)',
-              border: '1px solid rgba(102, 126, 234, 0.2)',
-              borderRadius: '28px',
-              padding: '40px',
-              maxWidth: '800px',
-              margin: '0 auto'
-            }}>
-              <SimulationForm onSubmit={handleSimulation} isLoading={isLoading} />
-            </div>
-          </>
-        );
-
-      case 'analytics':
-        return (
-          <>
-            <div style={{ marginBottom: '32px', textAlign: 'center' }}>
-              <h2 style={{ fontSize: '32px', fontWeight: 700, color: 'white', marginBottom: '8px' }}>
-                Analytics Dashboard
-              </h2>
-              <p style={{ color: 'rgba(255,255,255,0.6)', fontSize: '16px' }}>
-                Deep insights into your financial data
-              </p>
-            </div>
-            <LiveMetrics />
-            <div style={{ marginTop: '40px' }}>
-              <AIInsights />
-            </div>
-          </>
-        );
-
-      case 'actuary':
-        return (
-          <>
-            <div style={{ marginBottom: '32px', textAlign: 'center' }}>
-              <h2 style={{ fontSize: '32px', fontWeight: 700, color: 'white', marginBottom: '8px' }}>
-                The Actuary
-              </h2>
-              <p style={{ color: 'rgba(255,255,255,0.6)', fontSize: '16px' }}>
-                Quality of Life &amp; Health Risk Analysis Agent
-              </p>
-            </div>
-
-            {simulationData?.actuary ? (
-              <div style={{
-                background: 'linear-gradient(135deg, rgba(102, 126, 234, 0.1) 0%, rgba(118, 75, 162, 0.05) 100%)',
-                backdropFilter: 'blur(24px)',
-                border: '1px solid rgba(102, 126, 234, 0.2)',
-                borderRadius: '24px',
-                padding: '32px',
-                marginBottom: '32px'
-              }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '16px', marginBottom: '24px' }}>
-                  <div style={{ width: '64px', height: '64px', borderRadius: '16px', background: 'linear-gradient(135deg, #3b82f6 0%, #8b5cf6 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                    <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
-                  </div>
-                  <div>
-                    <h3 style={{ fontSize: '24px', fontWeight: 700, color: 'white' }}>The Actuary</h3>
-                    <p style={{ color: 'rgba(255,255,255,0.5)', fontSize: '14px' }}>Live analysis for {simulationData.actuary.city}</p>
-                  </div>
-                  <div style={{ marginLeft: 'auto', display: 'flex', gap: '8px', alignItems: 'center' }}>
-                    <div style={{ padding: '8px 16px', background: 'rgba(59, 130, 246, 0.2)', borderRadius: '8px', border: '1px solid rgba(59, 130, 246, 0.3)' }}>
-                      <span style={{ color: '#60a5fa', fontSize: '14px', fontWeight: 600 }}>📍 {simulationData.actuary.city}</span>
-                    </div>
-                    <div style={{ padding: '8px 16px', background: 'rgba(34, 197, 94, 0.2)', borderRadius: '8px', border: '1px solid rgba(34, 197, 94, 0.3)' }}>
-                      <span style={{ color: '#4ade80', fontSize: '14px', fontWeight: 600 }}>● Live AI Data</span>
-                    </div>
-                  </div>
-                </div>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '16px', marginBottom: '24px' }}>
-                  {[
-                    { label: 'Air Quality Index (AQI)', value: simulationData.actuary.air_quality_index, status: simulationData.actuary.air_quality_index < 50 ? 'Good' : simulationData.actuary.air_quality_index < 100 ? 'Moderate' : 'Poor', color: simulationData.actuary.air_quality_index < 50 ? '#10b981' : simulationData.actuary.air_quality_index < 100 ? '#eab308' : '#ef4444' },
-                    { label: 'Healthcare Score', value: `${simulationData.actuary.healthcare_score}/100`, status: simulationData.actuary.healthcare_score > 80 ? 'Excellent' : 'Good', color: '#10b981' },
-                    { label: 'Safety Score', value: `${simulationData.actuary.safety_score}/100`, status: simulationData.actuary.safety_score > 80 ? 'Very Good' : 'Good', color: '#10b981' },
-                    { label: 'Composite QoL Score', value: `${simulationData.actuary.composite_score}/100`, status: simulationData.actuary.overall_risk_rating + ' Risk', color: simulationData.actuary.overall_risk_rating === 'Low' ? '#10b981' : simulationData.actuary.overall_risk_rating === 'High' ? '#ef4444' : '#eab308' },
-                    { label: 'Happiness Index', value: `${simulationData.actuary.happiness_index}/100`, status: 'World Happiness Report', color: '#3b82f6' },
-                    { label: 'Healthcare Wait Time', value: `${simulationData.actuary.healthcare_wait}h`, status: 'Average wait', color: simulationData.actuary.healthcare_wait < 3 ? '#10b981' : '#eab308' },
-                  ].map((metric, i) => (
-                    <div key={i} style={{ padding: '20px', background: 'rgba(0,0,0,0.2)', borderRadius: '16px' }}>
-                      <div style={{ fontSize: '12px', color: 'rgba(255,255,255,0.5)', marginBottom: '8px' }}>{metric.label}</div>
-                      <div style={{ fontSize: '28px', fontWeight: 700, color: 'white', marginBottom: '4px' }}>{metric.value}</div>
-                      <div style={{ fontSize: '12px', color: metric.color, fontWeight: 600 }}>{metric.status}</div>
-                    </div>
-                  ))}
-                </div>
-                <div style={{ padding: '20px', background: 'rgba(59, 130, 246, 0.1)', borderRadius: '16px', border: '1px solid rgba(59, 130, 246, 0.2)' }}>
-                  <h4 style={{ fontSize: '16px', fontWeight: 600, color: 'white', marginBottom: '8px' }}>🔍 Live Analysis — {simulationData.actuary.city}</h4>
-                  <p style={{ color: 'rgba(255,255,255,0.7)', fontSize: '13px', lineHeight: 1.6, marginBottom: '8px' }}>{simulationData.actuary.notes || `${simulationData.actuary.city} has a composite quality of life score of ${simulationData.actuary.composite_score}/100 with an overall risk rating of ${simulationData.actuary.overall_risk_rating}.`}</p>
-                  <p style={{ color: 'rgba(255,255,255,0.4)', fontSize: '11px' }}>Source: {simulationData.actuary.data_source}</p>
-                </div>
-              </div>
-            ) : (
-              <div style={{
-                background: 'linear-gradient(135deg, rgba(102, 126, 234, 0.1) 0%, rgba(118, 75, 162, 0.05) 100%)',
-                backdropFilter: 'blur(24px)', border: '1px solid rgba(102, 126, 234, 0.2)',
-                borderRadius: '24px', padding: '32px', marginBottom: '32px'
-              }}>
-                <p style={{ color: 'rgba(255,255,255,0.6)', textAlign: 'center' }}>Run a simulation to see live Actuary data for your target city.</p>
-              </div>
-            )}
-            <div style={{ marginTop: '32px' }}>
-              <LifestyleTwins />
-            </div>
-          </>
-        );
-
-      case 'fiscal':
-        return (
-          <>
-            <div style={{ marginBottom: '32px', textAlign: 'center' }}>
-              <h2 style={{ fontSize: '32px', fontWeight: 700, color: 'white', marginBottom: '8px' }}>
-                Fiscal Ghost
-              </h2>
-              <p style={{ color: 'rgba(255,255,255,0.6)', fontSize: '16px' }}>
-                Cost of Living &amp; Financial Projection Agent
-              </p>
-            </div>
-            {simulationData?.fiscal ? (
-              <div style={{
-                background: 'linear-gradient(135deg, rgba(102, 126, 234, 0.1) 0%, rgba(118, 75, 162, 0.05) 100%)',
-                backdropFilter: 'blur(24px)',
-                border: '1px solid rgba(102, 126, 234, 0.2)',
-                borderRadius: '24px',
-                padding: '32px',
-                marginBottom: '32px'
-              }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '16px', marginBottom: '24px' }}>
-                  <div style={{ width: '64px', height: '64px', borderRadius: '16px', background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                    <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/></svg>
-                  </div>
-                  <div>
-                    <h3 style={{ fontSize: '24px', fontWeight: 700, color: 'white' }}>Fiscal Ghost</h3>
-                    <p style={{ color: 'rgba(255,255,255,0.5)', fontSize: '14px' }}>Live expense model for {simulationData.fiscal.city}</p>
-                  </div>
-                  <div style={{ marginLeft: 'auto', display: 'flex', gap: '8px', alignItems: 'center' }}>
-                    <div style={{ padding: '8px 16px', background: 'rgba(59, 130, 246, 0.2)', borderRadius: '8px', border: '1px solid rgba(59, 130, 246, 0.3)' }}>
-                      <span style={{ color: '#60a5fa', fontSize: '14px', fontWeight: 600 }}>📍 {simulationData.fiscal.city}</span>
-                    </div>
-                    <div style={{ padding: '8px 16px', background: 'rgba(34, 197, 94, 0.2)', borderRadius: '8px', border: '1px solid rgba(34, 197, 94, 0.3)' }}>
-                      <span style={{ color: '#4ade80', fontSize: '14px', fontWeight: 600 }}>● Live AI Data</span>
-                    </div>
-                  </div>
-                </div>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '16px', marginBottom: '24px' }}>
-                  {[
-                    { label: 'Monthly Burn Rate', value: `$${simulationData.fiscal.monthly_expenses.toLocaleString()}`, status: 'AI-projected', color: '#3b82f6' },
-                    { label: 'CoL Multiplier vs Global', value: `${simulationData.fiscal.col_multiplier.toFixed(2)}x`, status: simulationData.fiscal.col_multiplier > 1.2 ? 'Higher cost city' : simulationData.fiscal.col_multiplier < 0.9 ? 'Lower cost city' : 'Near average', color: simulationData.fiscal.col_multiplier > 1.2 ? '#ef4444' : '#10b981' },
-                    { label: 'FX Rate (vs USD)', value: `${simulationData.fiscal.fx_rate.toFixed(4)} ${simulationData.fiscal.currency}`, status: 'Live rate', color: '#a78bfa' },
-                    { label: 'Effective Tax Rate', value: `${(simulationData.fiscal.effective_tax_rate * 100).toFixed(1)}%`, status: simulationData.fiscal.tax_regime, color: '#eab308' },
-                    { label: 'Net Annual Savings', value: `$${Math.round(simulationData.fiscal.net_annual_savings).toLocaleString()}`, status: simulationData.fiscal.net_annual_savings > 0 ? 'Positive' : 'Tight budget', color: simulationData.fiscal.net_annual_savings > 0 ? '#10b981' : '#ef4444' },
-                    { label: 'Annual Expenses', value: `$${Math.round(simulationData.fiscal.annual_expenses).toLocaleString()}`, status: `${simulationData.fiscal.lifestyle_key} lifestyle`, color: '#ec4899' },
-                  ].map((metric, i) => (
-                    <div key={i} style={{ padding: '20px', background: 'rgba(0,0,0,0.2)', borderRadius: '16px' }}>
-                      <div style={{ fontSize: '12px', color: 'rgba(255,255,255,0.5)', marginBottom: '8px' }}>{metric.label}</div>
-                      <div style={{ fontSize: '28px', fontWeight: 700, color: 'white', marginBottom: '4px' }}>{metric.value}</div>
-                      <div style={{ fontSize: '12px', color: metric.color, fontWeight: 600 }}>{metric.status}</div>
-                    </div>
-                  ))}
-                </div>
-                <div style={{ padding: '20px', background: 'rgba(16, 185, 129, 0.1)', borderRadius: '16px', border: '1px solid rgba(16, 185, 129, 0.2)' }}>
-                  <h4 style={{ fontSize: '16px', fontWeight: 600, color: 'white', marginBottom: '12px' }}>💰 Financial Insight — {simulationData.fiscal.city}</h4>
-                  <p style={{ color: 'rgba(255,255,255,0.7)', fontSize: '14px', lineHeight: 1.7 }}>
-                    Monthly cost of living: <strong style={{ color: 'white' }}>${simulationData.fiscal.monthly_expenses.toLocaleString()}</strong> &nbsp;·&nbsp;
-                    Tax rate: <strong style={{ color: 'white' }}>{(simulationData.fiscal.effective_tax_rate * 100).toFixed(1)}%</strong> ({simulationData.fiscal.tax_regime}) &nbsp;·&nbsp;
-                    Annual savings: <strong style={{ color: simulationData.fiscal.net_annual_savings > 0 ? '#10b981' : '#ef4444' }}>${Math.round(simulationData.fiscal.net_annual_savings).toLocaleString()}</strong>.
-                    CoL is <strong style={{ color: 'white' }}>{simulationData.fiscal.col_multiplier.toFixed(2)}x</strong> the global average.
-                    FX rate: 1 USD = {simulationData.fiscal.fx_rate.toFixed(4)} {simulationData.fiscal.currency}.
-                  </p>
-                </div>
-              </div>
-            ) : (
-              <div style={{ background: 'rgba(102,126,234,0.1)', backdropFilter: 'blur(24px)', border: '1px solid rgba(102,126,234,0.2)', borderRadius: '24px', padding: '32px', marginBottom: '32px' }}>
-                <p style={{ color: 'rgba(255,255,255,0.6)', textAlign: 'center' }}>Run a simulation to see live Fiscal Ghost data for your target city.</p>
-              </div>
-            )}
-            <div style={{ marginTop: '32px' }}>
-              <HyperLocalData />
-            </div>
-          </>
-        );
-
-      case 'nexus':
-        return (
-          <>
-            <div style={{ marginBottom: '32px', textAlign: 'center' }}>
-              <h2 style={{ fontSize: '32px', fontWeight: 700, color: 'white', marginBottom: '8px' }}>
-                The Nexus
-              </h2>
-              <p style={{ color: 'rgba(255,255,255,0.6)', fontSize: '16px' }}>
-                Tax Optimization & Compliance Agent
-              </p>
-            </div>
-            <div style={{
-              background: 'linear-gradient(135deg, rgba(102, 126, 234, 0.1) 0%, rgba(118, 75, 162, 0.05) 100%)',
-              backdropFilter: 'blur(24px)',
-              border: '1px solid rgba(102, 126, 234, 0.2)',
-              borderRadius: '24px',
-              padding: '32px',
-              marginBottom: '32px'
-            }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '16px', marginBottom: '24px' }}>
-                <div style={{ width: '64px', height: '64px', borderRadius: '16px', background: 'linear-gradient(135deg, #a855f7 0%, #7c3aed 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                  <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2"><path d="M12 3v18M3 12h18M5.6 5.6l12.8 12.8M18.4 5.6L5.6 18.4"/></svg>
-                </div>
-                <div>
-                  <h3 style={{ fontSize: '24px', fontWeight: 700, color: 'white' }}>The Nexus</h3>
-                  <p style={{ color: 'rgba(255,255,255,0.5)', fontSize: '14px' }}>Navigating international tax treaties and compliance</p>
-                </div>
-                <div style={{ marginLeft: 'auto', padding: '8px 16px', background: 'rgba(34, 197, 94, 0.2)', borderRadius: '8px', border: '1px solid rgba(34, 197, 94, 0.3)' }}>
-                  <span style={{ color: '#4ade80', fontSize: '14px', fontWeight: 600 }}>● Active</span>
-                </div>
-              </div>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '16px', marginBottom: '24px' }}>
-                {[
-                  { label: 'Tax Treaty Savings', value: '$8,400', status: 'Annual', color: '#10b981' },
-                  { label: 'Effective Tax Rate', value: '28.5%', status: 'Germany', color: '#eab308' },
-                  { label: 'Compliance Score', value: '100%', status: 'All Forms Ready', color: '#10b981' },
-                  { label: 'Double Tax Relief', value: '15%', status: 'DTAA Applied', color: '#3b82f6' },
-                  { label: 'Filing Deadline', value: '89 days', status: 'April 15, 2026', color: '#f59e0b' },
-                  { label: 'Documents Ready', value: '6/6', status: 'Complete', color: '#10b981' }
-                ].map((metric, i) => (
-                  <div key={i} style={{ padding: '20px', background: 'rgba(0,0,0,0.2)', borderRadius: '16px' }}>
-                    <div style={{ fontSize: '12px', color: 'rgba(255,255,255,0.5)', marginBottom: '8px' }}>{metric.label}</div>
-                    <div style={{ fontSize: '28px', fontWeight: 700, color: 'white', marginBottom: '4px' }}>{metric.value}</div>
-                    <div style={{ fontSize: '12px', color: metric.color, fontWeight: 600 }}>{metric.status}</div>
-                  </div>
-                ))}
-              </div>
-              <div style={{ padding: '20px', background: 'rgba(168, 85, 247, 0.1)', borderRadius: '16px', border: '1px solid rgba(168, 85, 247, 0.2)' }}>
-                <h4 style={{ fontSize: '16px', fontWeight: 600, color: 'white', marginBottom: '12px' }}>⚖️ Tax Strategy</h4>
-                <p style={{ color: 'rgba(255,255,255,0.7)', fontSize: '14px', lineHeight: 1.7 }}>
-                  The Germany-US Tax Treaty (Article 15) allows you to claim relief on employment income during your transition period.
-                  By timing your move in January instead of October, you save $8,000 in partial-year residency fees.
-                  All 6 compliance documents are pre-filled and ready for download in your Compliance Pack.
-                </p>
-              </div>
-            </div>
-            <div style={{ marginTop: '32px' }}>
-              <SourceGrounding />
-            </div>
-            <div style={{ marginTop: '32px' }}>
-              <SemanticCrossMapping />
-            </div>
-          </>
-        );
-
-      case 'profile':
-        return (
-          <>
-            <div style={{ marginBottom: '32px', textAlign: 'center' }}>
-              <h2 style={{ fontSize: '32px', fontWeight: 700, color: 'white', marginBottom: '8px' }}>
-                Your Profile
-              </h2>
-              <p style={{ color: 'rgba(255,255,255,0.6)', fontSize: '16px' }}>
-                Manage your personal information and preferences
-              </p>
-            </div>
-            <div style={{ maxWidth: '800px', margin: '0 auto', display: 'flex', flexDirection: 'column', gap: '24px' }}>
-              {/* Profile Card */}
-              <div style={{ background: 'linear-gradient(135deg, rgba(102, 126, 234, 0.1) 0%, rgba(118, 75, 162, 0.05) 100%)', backdropFilter: 'blur(24px)', border: '1px solid rgba(102, 126, 234, 0.2)', borderRadius: '24px', padding: '32px' }}>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '32px' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '20px' }}>
-                    <div style={{ width: '80px', height: '80px', borderRadius: '50%', background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '28px', fontWeight: 700, color: 'white' }}>
-                      {profileData.name.split(' ').map(n => n[0]).join('')}
-                    </div>
-                    <div>
-                      <h3 style={{ fontSize: '22px', fontWeight: 700, color: 'white', marginBottom: '4px' }}>{profileData.name}</h3>
-                      <p style={{ fontSize: '14px', color: 'rgba(255,255,255,0.5)' }}>{profileData.email}</p>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '8px' }}>
-                        <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#10b981' }} />
-                        <span style={{ fontSize: '12px', color: '#10b981' }}>Signed In</span>
-                      </div>
-                    </div>
-                  </div>
-                  <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}
-                    onClick={() => setShowEditProfile(true)}
-                    style={{ padding: '10px 20px', background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)', border: 'none', borderRadius: '10px', color: 'white', fontSize: '13px', fontWeight: 600, cursor: 'pointer' }}>
-                    Edit Profile
-                  </motion.button>
-                </div>
-                
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
-                  {[
-                    { label: 'Current Location', value: profileData.location, icon: '📍' },
-                    { label: 'Annual Income', value: `₹${parseInt(profileData.income).toLocaleString('en-IN')}`, icon: '💰' },
-                    { label: 'Target Cities', value: profileData.targetCities.split(',').length + ' selected', icon: '🌍' },
-                    { label: 'Member Since', value: 'January 2026', icon: '📅' }
-                  ].map((item, i) => (
-                    <div key={i} style={{ padding: '16px', background: 'rgba(0,0,0,0.2)', borderRadius: '12px', display: 'flex', alignItems: 'center', gap: '12px' }}>
-                      <span style={{ fontSize: '24px' }}>{item.icon}</span>
-                      <div>
-                        <div style={{ fontSize: '11px', color: 'rgba(255,255,255,0.5)', marginBottom: '4px' }}>{item.label}</div>
-                        <div style={{ fontSize: '15px', fontWeight: 600, color: 'white' }}>{item.value}</div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              {/* Account Actions */}
-              <div style={{ background: 'linear-gradient(135deg, rgba(102, 126, 234, 0.1) 0%, rgba(118, 75, 162, 0.05) 100%)', backdropFilter: 'blur(24px)', border: '1px solid rgba(102, 126, 234, 0.2)', borderRadius: '24px', padding: '32px' }}>
-                <h3 style={{ fontSize: '18px', fontWeight: 600, color: 'white', marginBottom: '20px' }}>Account Actions</h3>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                  {[
-                    { label: 'Change Password', desc: 'Update your account password', icon: '🔐', action: 'password' },
-                    { label: 'Two-Factor Authentication', desc: 'Add extra security to your account', icon: '🛡️', action: '2fa', badge: 'Enabled' },
-                    { label: 'Connected Accounts', desc: 'Manage linked services', icon: '🔗', action: 'accounts' },
-                    { label: 'Export Data', desc: 'Download all your data', icon: '📥', action: 'export' }
-                  ].map((item, i) => (
-                    <div key={i} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px', background: 'rgba(0,0,0,0.2)', borderRadius: '12px' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                        <span style={{ fontSize: '24px' }}>{item.icon}</span>
-                        <div>
-                          <div style={{ fontSize: '14px', fontWeight: 600, color: 'white', marginBottom: '2px' }}>{item.label}</div>
-                          <div style={{ fontSize: '12px', color: 'rgba(255,255,255,0.5)' }}>{item.desc}</div>
-                        </div>
-                      </div>
-                      {item.badge ? (
-                        <span style={{ padding: '4px 10px', background: 'rgba(16, 185, 129, 0.2)', borderRadius: '6px', fontSize: '11px', fontWeight: 600, color: '#10b981' }}>{item.badge}</span>
-                      ) : (
-                        <motion.button whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}
-                          onClick={() => {
-                            if (item.action === 'password') toast.success('Password change feature coming soon!', { icon: '🔐' });
-                            else if (item.action === 'accounts') toast.success('Connected accounts feature coming soon!', { icon: '🔗' });
-                            else if (item.action === 'export') {
-                              const data = JSON.stringify(profileData, null, 2);
-                              const blob = new Blob([data], { type: 'application/json' });
-                              const url = URL.createObjectURL(blob);
-                              const a = document.createElement('a');
-                              a.href = url;
-                              a.download = 'equinox-profile-data.json';
-                              a.click();
-                              toast.success('Profile data exported!', { icon: '📥' });
-                            }
-                          }}
-                          style={{ padding: '8px 16px', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', color: 'white', fontSize: '12px', cursor: 'pointer' }}>
-                          Manage
-                        </motion.button>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              {/* Sign In / Sign Out */}
-              <div style={{ background: 'linear-gradient(135deg, rgba(102, 126, 234, 0.1) 0%, rgba(118, 75, 162, 0.05) 100%)', backdropFilter: 'blur(24px)', border: '1px solid rgba(102, 126, 234, 0.2)', borderRadius: '24px', padding: '32px' }}>
-                <h3 style={{ fontSize: '18px', fontWeight: 600, color: 'white', marginBottom: '20px' }}>Session</h3>
-                <div style={{ display: 'flex', gap: '12px' }}>
-                  <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}
-                    onClick={() => {
-                      toast.success('Google Sign-In coming soon! Currently using demo mode.', { duration: 3000 });
-                    }}
-                    style={{ flex: 1, padding: '14px', background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)', border: 'none', borderRadius: '12px', color: 'white', fontSize: '14px', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                      <path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4M10 17l5-5-5-5M15 12H3"/>
-                    </svg>
-                    Sign In with Google
-                  </motion.button>
-                  <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}
-                    onClick={() => {
-                      localStorage.clear();
-                      toast.success('Signed out successfully!', { duration: 2000 });
-                      setTimeout(() => window.location.reload(), 1000);
-                    }}
-                    style={{ flex: 1, padding: '14px', background: 'rgba(239, 68, 68, 0.1)', border: '1px solid rgba(239, 68, 68, 0.3)', borderRadius: '12px', color: '#ef4444', fontSize: '14px', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                      <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/>
-                    </svg>
-                    Sign Out
-                  </motion.button>
-                </div>
-                <p style={{ fontSize: '12px', color: 'rgba(255,255,255,0.4)', marginTop: '16px', textAlign: 'center' }}>
-                  Last signed in: Today at 10:30 AM from London, UK
-                </p>
-              </div>
-            </div>
-          </>
-        );
-
-      case 'settings':
-        const settingsConfig = [
-          { 
-            title: 'Notifications', 
-            items: [
-              { label: 'Email notifications', key: 'emailNotifications' },
-              { label: 'Push notifications', key: 'pushNotifications' },
-              { label: 'Agent consensus alerts', key: 'agentAlerts' }
-            ] 
-          },
-          { 
-            title: 'Privacy', 
-            items: [
-              { label: 'Zero-knowledge mode', key: 'zeroKnowledge' },
-              { label: 'Data encryption', key: 'dataEncryption' },
-              { label: 'Anonymous analytics', key: 'anonymousAnalytics' }
-            ] 
-          },
-          { 
-            title: 'Display', 
-            items: [
-              { label: 'Dark mode', key: 'darkMode' },
-              { label: 'Currency format', key: 'currencyFormat' },
-              { label: 'Date format', key: 'dateFormat' }
-            ] 
-          }
-        ];
-        return (
-          <>
-            <div style={{ marginBottom: '32px', textAlign: 'center' }}>
-              <h2 style={{ fontSize: '32px', fontWeight: 700, color: 'white', marginBottom: '8px' }}>
-                Settings
-              </h2>
-              <p style={{ color: 'rgba(255,255,255,0.6)', fontSize: '16px' }}>
-                Configure your preferences and notifications
-              </p>
-            </div>
-            <div style={{ background: 'linear-gradient(135deg, rgba(102, 126, 234, 0.1) 0%, rgba(118, 75, 162, 0.05) 100%)', backdropFilter: 'blur(24px)', border: '1px solid rgba(102, 126, 234, 0.2)', borderRadius: '24px', padding: '40px', maxWidth: '800px', margin: '0 auto' }}>
-              {settingsConfig.map((section, i) => (
-                <div key={i} style={{ marginBottom: i < 2 ? '32px' : 0 }}>
-                  <h3 style={{ fontSize: '18px', fontWeight: 600, color: 'white', marginBottom: '16px' }}>{section.title}</h3>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                    {section.items.map((item, j) => {
-                      const isOn = settings[item.key as keyof typeof settings];
-                      return (
-                        <div key={j} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px', background: 'rgba(0,0,0,0.2)', borderRadius: '12px' }}>
-                          <span style={{ fontSize: '14px', color: 'rgba(255,255,255,0.8)' }}>{item.label}</span>
-                          <motion.div 
-                            onClick={() => {
-                              setSettings(prev => ({ ...prev, [item.key]: !prev[item.key as keyof typeof settings] }));
-                              toast.success(`${item.label} ${!isOn ? 'enabled' : 'disabled'}`, { duration: 1500 });
-                            }}
-                            style={{ 
-                              width: '48px', 
-                              height: '24px', 
-                              borderRadius: '12px', 
-                              background: isOn ? '#10b981' : 'rgba(255,255,255,0.2)', 
-                              position: 'relative', 
-                              cursor: 'pointer',
-                              transition: 'background 0.2s ease'
-                            }}
-                            whileHover={{ scale: 1.05 }}
-                            whileTap={{ scale: 0.95 }}
-                          >
-                            <motion.div 
-                              animate={{ x: isOn ? 24 : 0 }}
-                              transition={{ type: 'spring', stiffness: 500, damping: 30 }}
-                              style={{ 
-                                position: 'absolute', 
-                                left: '2px', 
-                                top: '2px', 
-                                width: '20px', 
-                                height: '20px', 
-                                borderRadius: '50%', 
-                                background: 'white',
-                                boxShadow: '0 2px 4px rgba(0,0,0,0.2)'
-                              }} 
-                            />
-                          </motion.div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </>
-        );
-
-      case 'help':
-        const helpItems = [
-          { title: 'Getting Started', desc: 'Learn the basics of Equinox Nexus', icon: '📚', action: 'getting-started' },
-          { title: 'FAQ', desc: 'Frequently asked questions', icon: '❓', action: 'faq' },
-          { title: 'Video Tutorials', desc: 'Watch step-by-step guides', icon: '🎥', action: 'videos' },
-          { title: 'Contact Support', desc: 'Get help from our team', icon: '💬', action: 'support' },
-          { title: 'Documentation', desc: 'Technical documentation', icon: '📖', action: 'docs' },
-          { title: 'Community Forum', desc: 'Connect with other users', icon: '👥', action: 'community' }
-        ];
-        return (
-          <>
-            <div style={{ marginBottom: '32px', textAlign: 'center' }}>
-              <h2 style={{ fontSize: '32px', fontWeight: 700, color: 'white', marginBottom: '8px' }}>
-                Help & Support
-              </h2>
-              <p style={{ color: 'rgba(255,255,255,0.6)', fontSize: '16px' }}>
-                Get assistance and learn how to use Equinox Nexus
-              </p>
-            </div>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '24px' }}>
-              {helpItems.map((item, i) => (
-                <motion.div 
-                  key={i} 
-                  whileHover={{ scale: 1.02, y: -4 }}
-                  whileTap={{ scale: 0.98 }}
-                  onClick={() => setShowHelpModal(item.action)}
-                  style={{ 
-                    background: 'linear-gradient(135deg, rgba(102, 126, 234, 0.1) 0%, rgba(118, 75, 162, 0.05) 100%)', 
-                    backdropFilter: 'blur(24px)', 
-                    border: '1px solid rgba(102, 126, 234, 0.2)', 
-                    borderRadius: '20px', 
-                    padding: '32px', 
-                    cursor: 'pointer'
-                  }}
-                >
-                  <div style={{ fontSize: '48px', marginBottom: '16px' }}>{item.icon}</div>
-                  <h3 style={{ fontSize: '18px', fontWeight: 700, color: 'white', marginBottom: '8px' }}>{item.title}</h3>
-                  <p style={{ fontSize: '14px', color: 'rgba(255,255,255,0.6)' }}>{item.desc}</p>
-                </motion.div>
-              ))}
-            </div>
-
-            {/* Help Modals */}
-            <AnimatePresence>
-              {showHelpModal && (
-                <motion.div
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  exit={{ opacity: 0 }}
-                  onClick={() => setShowHelpModal(null)}
-                  style={{
-                    position: 'fixed',
-                    inset: 0,
-                    background: 'rgba(0,0,0,0.8)',
-                    backdropFilter: 'blur(8px)',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    zIndex: 9999,
-                    padding: '20px'
-                  }}
-                >
-                  <motion.div
-                    initial={{ opacity: 0, scale: 0.9, y: 20 }}
-                    animate={{ opacity: 1, scale: 1, y: 0 }}
-                    exit={{ opacity: 0, scale: 0.9, y: 20 }}
-                    onClick={(e) => e.stopPropagation()}
-                    style={{
-                      width: '100%',
-                      maxWidth: '600px',
-                      maxHeight: '80vh',
-                      overflow: 'auto',
-                      background: 'linear-gradient(135deg, rgba(26, 26, 46, 0.98) 0%, rgba(40, 20, 60, 0.98) 100%)',
-                      borderRadius: '24px',
-                      border: '1px solid rgba(102, 126, 234, 0.3)',
-                      boxShadow: '0 25px 80px rgba(0,0,0,0.5)'
-                    }}
-                  >
-                    {/* Modal Header */}
-                    <div style={{
-                      padding: '24px 24px 20px',
-                      borderBottom: '1px solid rgba(255,255,255,0.1)',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'space-between',
-                      position: 'sticky',
-                      top: 0,
-                      background: 'linear-gradient(135deg, rgba(26, 26, 46, 0.98) 0%, rgba(40, 20, 60, 0.98) 100%)',
-                      borderRadius: '24px 24px 0 0'
-                    }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                        <span style={{ fontSize: '28px' }}>
-                          {showHelpModal === 'getting-started' && '📚'}
-                          {showHelpModal === 'faq' && '❓'}
-                          {showHelpModal === 'videos' && '🎥'}
-                          {showHelpModal === 'support' && '💬'}
-                          {showHelpModal === 'docs' && '📖'}
-                          {showHelpModal === 'community' && '👥'}
-                        </span>
-                        <h3 style={{ fontSize: '20px', fontWeight: 700, color: 'white' }}>
-                          {showHelpModal === 'getting-started' && 'Getting Started'}
-                          {showHelpModal === 'faq' && 'Frequently Asked Questions'}
-                          {showHelpModal === 'videos' && 'Video Tutorials'}
-                          {showHelpModal === 'support' && 'Contact Support'}
-                          {showHelpModal === 'docs' && 'Documentation'}
-                          {showHelpModal === 'community' && 'Community Forum'}
-                        </h3>
-                      </div>
-                      <motion.button
-                        whileHover={{ scale: 1.1 }}
-                        whileTap={{ scale: 0.9 }}
-                        onClick={() => setShowHelpModal(null)}
-                        style={{
-                          background: 'rgba(255,255,255,0.1)',
-                          border: 'none',
-                          borderRadius: '8px',
-                          padding: '8px',
-                          cursor: 'pointer',
-                          color: 'white'
-                        }}
-                      >
-                        <X style={{ width: '18px', height: '18px' }} />
-                      </motion.button>
-                    </div>
-
-                    {/* Modal Content */}
-                    <div style={{ padding: '24px' }}>
-                      {showHelpModal === 'getting-started' && (
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                          {[
-                            { step: 1, title: 'Set Up Your Profile', desc: 'Add your current income, location, and financial details to personalize your experience.', icon: '👤' },
-                            { step: 2, title: 'Choose Target Cities', desc: 'Select up to 5 cities you\'re considering for relocation. Our AI will analyze each one.', icon: '🌍' },
-                            { step: 3, title: 'Run Your First Simulation', desc: 'Click "Run Simulation" to generate a comprehensive financial projection across all target cities.', icon: '🚀' },
-                            { step: 4, title: 'Review AI Insights', desc: 'Our three AI agents (Actuary, Fiscal Ghost, Nexus) will provide health, cost, and tax analysis.', icon: '🤖' },
-                            { step: 5, title: 'Download Compliance Pack', desc: 'Get all necessary documents pre-filled for visa applications, tax filings, and landlord verification.', icon: '📄' }
-                          ].map((item) => (
-                            <div key={item.step} style={{ display: 'flex', gap: '16px', padding: '20px', background: 'rgba(0,0,0,0.2)', borderRadius: '16px' }}>
-                              <div style={{ width: '48px', height: '48px', borderRadius: '12px', background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '20px', flexShrink: 0 }}>
-                                {item.icon}
-                              </div>
-                              <div>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
-                                  <span style={{ fontSize: '11px', fontWeight: 600, color: '#a78bfa', background: 'rgba(167, 139, 250, 0.2)', padding: '2px 8px', borderRadius: '4px' }}>STEP {item.step}</span>
-                                  <span style={{ fontSize: '15px', fontWeight: 600, color: 'white' }}>{item.title}</span>
-                                </div>
-                                <p style={{ fontSize: '13px', color: 'rgba(255,255,255,0.6)', lineHeight: 1.5, margin: 0 }}>{item.desc}</p>
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-
-                      {showHelpModal === 'faq' && (
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                          {[
-                            { q: 'Is my financial data secure?', a: 'Absolutely. We use zero-knowledge encryption, meaning your data is encrypted on your device before it ever reaches our servers. We cannot see your actual financial information.' },
-                            { q: 'How accurate are the projections?', a: 'Our AI models are trained on real-time data from official sources (OECD, World Bank, local government databases). Projections have a 94% accuracy rate based on historical validation.' },
-                            { q: 'Can I export all my data?', a: 'Yes! Go to your Profile page and click "Export Data" to download everything in JSON format. You own your data completely.' },
-                            { q: 'What are the three AI agents?', a: 'The Actuary analyzes health & quality of life, Fiscal Ghost tracks cost of living & expenses, and The Nexus handles tax optimization & compliance.' },
-                            { q: 'How often is data updated?', a: 'Cost of living data updates daily. Tax treaties and regulations update within 48 hours of official changes. Health metrics update weekly.' },
-                            { q: 'Is there a mobile app?', a: 'We\'re launching iOS and Android apps in Q2 2026. Sign up for notifications to be the first to know!' }
-                          ].map((item, i) => (
-                            <div key={i} style={{ padding: '20px', background: 'rgba(0,0,0,0.2)', borderRadius: '16px' }}>
-                              <div style={{ fontSize: '15px', fontWeight: 600, color: 'white', marginBottom: '8px', display: 'flex', alignItems: 'flex-start', gap: '8px' }}>
-                                <span style={{ color: '#a78bfa' }}>Q:</span> {item.q}
-                              </div>
-                              <div style={{ fontSize: '13px', color: 'rgba(255,255,255,0.7)', lineHeight: 1.6, paddingLeft: '20px' }}>
-                                <span style={{ color: '#10b981', fontWeight: 600 }}>A:</span> {item.a}
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-
-                      {showHelpModal === 'videos' && (
-                        <div style={{ textAlign: 'center', padding: '40px 20px' }}>
-                          <div style={{ width: '80px', height: '80px', borderRadius: '50%', background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 24px', fontSize: '36px' }}>🎬</div>
-                          <h4 style={{ fontSize: '18px', fontWeight: 600, color: 'white', marginBottom: '12px' }}>Video Tutorials Coming Soon</h4>
-                          <p style={{ fontSize: '14px', color: 'rgba(255,255,255,0.6)', lineHeight: 1.6, maxWidth: '400px', margin: '0 auto 24px' }}>
-                            We're recording comprehensive video guides covering every feature of Equinox Nexus. Subscribe to get notified when they're ready!
-                          </p>
-                          <motion.button
-                            whileHover={{ scale: 1.02 }}
-                            whileTap={{ scale: 0.98 }}
-                            onClick={() => { toast.success('You\'ll be notified when videos are ready!', { icon: '🔔' }); }}
-                            style={{ padding: '12px 24px', background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)', border: 'none', borderRadius: '12px', color: 'white', fontSize: '14px', fontWeight: 600, cursor: 'pointer' }}
-                          >
-                            Notify Me
-                          </motion.button>
-                        </div>
-                      )}
-
-                      {showHelpModal === 'support' && (
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-                          <p style={{ fontSize: '14px', color: 'rgba(255,255,255,0.7)', lineHeight: 1.6 }}>
-                            Our support team typically responds within 24 hours. For urgent issues, use live chat during business hours (9 AM - 6 PM GMT).
-                          </p>
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                            <input placeholder="Your email" style={{ width: '100%', boxSizing: 'border-box', padding: '14px 16px', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '12px', color: 'white', fontSize: '14px', outline: 'none' }} />
-                            <input placeholder="Subject" style={{ width: '100%', boxSizing: 'border-box', padding: '14px 16px', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '12px', color: 'white', fontSize: '14px', outline: 'none' }} />
-                            <textarea placeholder="Describe your issue..." rows={4} style={{ width: '100%', boxSizing: 'border-box', padding: '14px 16px', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '12px', color: 'white', fontSize: '14px', outline: 'none', resize: 'none' }} />
-                          </div>
-                          <motion.button
-                            whileHover={{ scale: 1.02 }}
-                            whileTap={{ scale: 0.98 }}
-                            onClick={() => { toast.success('Support ticket submitted! Check your email for confirmation.', { icon: '✅' }); setShowHelpModal(null); }}
-                            style={{ padding: '14px', background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)', border: 'none', borderRadius: '12px', color: 'white', fontSize: '14px', fontWeight: 600, cursor: 'pointer' }}
-                          >
-                            Submit Ticket
-                          </motion.button>
-                        </div>
-                      )}
-
-                      {showHelpModal === 'docs' && (
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                          {[
-                            { 
-                              title: 'API Reference', 
-                              desc: 'Complete API documentation for developers', 
-                              icon: '⚡',
-                              content: [
-                                { endpoint: 'POST /api/simulate', desc: 'Run a financial simulation with custom parameters' },
-                                { endpoint: 'GET /api/cities/:id', desc: 'Retrieve city data including cost of living metrics' },
-                                { endpoint: 'GET /api/compliance/:country', desc: 'Get compliance requirements for a specific country' },
-                                { endpoint: 'POST /api/trust-score', desc: 'Calculate trust score based on financial profile' }
-                              ]
-                            },
-                            { 
-                              title: 'Integration Guide', 
-                              desc: 'Connect Equinox Nexus with your existing tools', 
-                              icon: '🔗',
-                              content: [
-                                { endpoint: 'Webhooks', desc: 'Receive real-time notifications when simulations complete' },
-                                { endpoint: 'OAuth 2.0', desc: 'Secure authentication for third-party applications' },
-                                { endpoint: 'CSV Export', desc: 'Export data in CSV format for spreadsheet analysis' },
-                                { endpoint: 'Zapier', desc: 'Connect with 5000+ apps via Zapier integration' }
-                              ]
-                            },
-                            { 
-                              title: 'Data Sources', 
-                              desc: 'Learn about our data providers and methodology', 
-                              icon: '📊',
-                              content: [
-                                { endpoint: 'OECD', desc: 'Tax rates, economic indicators, and policy data' },
-                                { endpoint: 'World Bank', desc: 'Global development indicators and statistics' },
-                                { endpoint: 'Numbeo', desc: 'Cost of living and quality of life indices' },
-                                { endpoint: 'WHO', desc: 'Health metrics and healthcare access data' }
-                              ]
-                            },
-                            { 
-                              title: 'Security Whitepaper', 
-                              desc: 'Technical details on our encryption and privacy', 
-                              icon: '🔐',
-                              content: [
-                                { endpoint: 'AES-256', desc: 'Military-grade encryption for all stored data' },
-                                { endpoint: 'Zero-Knowledge Proofs', desc: 'Verify data without exposing actual values' },
-                                { endpoint: 'SOC 2 Type II', desc: 'Certified security controls and practices' },
-                                { endpoint: 'GDPR Compliant', desc: 'Full compliance with EU data protection laws' }
-                              ]
-                            }
-                          ].map((section, i) => (
-                            <div key={i} style={{ background: 'rgba(0,0,0,0.2)', borderRadius: '16px', overflow: 'hidden' }}>
-                              <div style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '16px 20px', borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
-                                <div style={{ width: '40px', height: '40px', borderRadius: '10px', background: 'rgba(102, 126, 234, 0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '18px' }}>{section.icon}</div>
-                                <div>
-                                  <div style={{ fontSize: '15px', fontWeight: 600, color: 'white' }}>{section.title}</div>
-                                  <div style={{ fontSize: '12px', color: 'rgba(255,255,255,0.5)' }}>{section.desc}</div>
-                                </div>
-                              </div>
-                              <div style={{ padding: '12px 20px' }}>
-                                {section.content.map((item, j) => (
-                                  <div key={j} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 0', borderBottom: j < section.content.length - 1 ? '1px solid rgba(255,255,255,0.05)' : 'none' }}>
-                                    <code style={{ fontSize: '13px', color: '#a78bfa', background: 'rgba(167, 139, 250, 0.1)', padding: '4px 8px', borderRadius: '6px' }}>{item.endpoint}</code>
-                                    <span style={{ fontSize: '12px', color: 'rgba(255,255,255,0.5)', textAlign: 'right', maxWidth: '200px' }}>{item.desc}</span>
-                                  </div>
-                                ))}
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-
-                      {showHelpModal === 'community' && (
-                        <div style={{ textAlign: 'center', padding: '40px 20px' }}>
-                          <div style={{ width: '80px', height: '80px', borderRadius: '50%', background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 24px', fontSize: '36px' }}>🌐</div>
-                          <h4 style={{ fontSize: '18px', fontWeight: 600, color: 'white', marginBottom: '12px' }}>Community Forum Launching Q2 2026</h4>
-                          <p style={{ fontSize: '14px', color: 'rgba(255,255,255,0.6)', lineHeight: 1.6, maxWidth: '400px', margin: '0 auto 24px' }}>
-                            Connect with other digital nomads, share experiences, and get advice from people who've made the move. Join the waitlist to be among the first members!
-                          </p>
-                          <div style={{ display: 'flex', gap: '12px', justifyContent: 'center' }}>
-                            <motion.button
-                              whileHover={{ scale: 1.02 }}
-                              whileTap={{ scale: 0.98 }}
-                              onClick={() => { toast.success('You\'re on the waitlist!', { icon: '🎉' }); }}
-                              style={{ padding: '12px 24px', background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)', border: 'none', borderRadius: '12px', color: 'white', fontSize: '14px', fontWeight: 600, cursor: 'pointer' }}
-                            >
-                              Join Waitlist
-                            </motion.button>
-                          </div>
-                          <div style={{ marginTop: '32px', padding: '20px', background: 'rgba(0,0,0,0.2)', borderRadius: '16px' }}>
-                            <div style={{ fontSize: '13px', color: 'rgba(255,255,255,0.5)', marginBottom: '12px' }}>Already on the waitlist</div>
-                            <div style={{ fontSize: '32px', fontWeight: 700, color: 'white' }}>2,847</div>
-                            <div style={{ fontSize: '12px', color: '#a78bfa' }}>people waiting</div>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  </motion.div>
-                </motion.div>
-              )}
-            </AnimatePresence>
-          </>
-        );
-
-      case 'privacy':
-        return (
-          <>
-            <PrivacyVault />
-            <div style={{ marginTop: '32px' }}>
-              <FederatedTrustScore />
-            </div>
-          </>
-        );
-
+      // ── Saved Twins ──────────────────────────────────────────────────────
       case 'saved':
-        return (
-          <>
-            <div style={{ marginBottom: '32px', textAlign: 'center' }}>
-              <h2 style={{ fontSize: '32px', fontWeight: 700, color: 'white', marginBottom: '8px' }}>Saved Reports</h2>
-              <p style={{ color: 'rgba(255,255,255,0.6)', fontSize: '16px' }}>Your bookmarked simulations and reports</p>
-            </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-              {[
-                { title: 'Berlin Relocation Analysis', date: 'Jan 2, 2026', type: 'Full Analysis', score: 87, icon: '🇩🇪' },
-                { title: 'Singapore Tax Optimization', date: 'Dec 28, 2025', type: 'Tax Report', score: 92, icon: '🇸🇬' },
-                { title: 'Tokyo Cost Comparison', date: 'Dec 20, 2025', type: 'Cost Analysis', score: 78, icon: '🇯🇵' },
-                { title: 'Dubai Investment Scenario', date: 'Dec 15, 2025', type: 'Monte Carlo', score: 85, icon: '🇦🇪' },
-              ].map((report, i) => (
-                <div key={i} style={{ background: 'linear-gradient(135deg, rgba(102, 126, 234, 0.1) 0%, rgba(118, 75, 162, 0.05) 100%)', backdropFilter: 'blur(24px)', border: '1px solid rgba(102, 126, 234, 0.2)', borderRadius: '16px', padding: '20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', transition: 'all 0.2s' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-                    <div style={{ fontSize: '32px' }}>{report.icon}</div>
-                    <div>
-                      <h3 style={{ fontSize: '16px', fontWeight: 600, color: 'white', marginBottom: '4px' }}>{report.title}</h3>
-                      <p style={{ fontSize: '12px', color: 'rgba(255,255,255,0.5)' }}>{report.type} • Saved {report.date}</p>
-                    </div>
-                  </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-                    <div style={{ padding: '8px 16px', background: 'rgba(16, 185, 129, 0.1)', borderRadius: '8px', border: '1px solid rgba(16, 185, 129, 0.2)' }}>
-                      <span style={{ fontSize: '14px', fontWeight: 600, color: '#10b981' }}>{report.score}/100</span>
-                    </div>
-                    <button style={{ padding: '8px 16px', background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)', border: 'none', borderRadius: '8px', color: 'white', fontSize: '13px', fontWeight: 600, cursor: 'pointer' }}>View</button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </>
-        );
-
       case 'history':
         return (
-          <>
-            <div style={{ marginBottom: '32px', textAlign: 'center' }}>
-              <h2 style={{ fontSize: '32px', fontWeight: 700, color: 'white', marginBottom: '8px' }}>History</h2>
-              <p style={{ color: 'rgba(255,255,255,0.6)', fontSize: '16px' }}>Your recent activity and analyses</p>
+          <div style={{ maxWidth: '900px', margin: '0 auto' }}>
+            <div style={{ textAlign: 'center', marginBottom: '40px' }}>
+              <h2 style={{ fontSize: '32px', fontWeight: 800, color: 'white', marginBottom: '8px' }}>
+                {activeView === 'saved' ? 'Saved Twins' : 'Simulation History'}
+              </h2>
+              <p style={{ color: 'rgba(255,255,255,0.5)', fontSize: '16px' }}>Your Financial Digital Twin records</p>
             </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-              {[
-                { action: 'Ran Monte Carlo simulation', target: 'Berlin scenario', time: '2 hours ago', icon: '📊' },
-                { action: 'Viewed neighborhood heatmap', target: 'Tokyo districts', time: '5 hours ago', icon: '🗺️' },
-                { action: 'Completed tax analysis', target: 'Singapore relocation', time: 'Yesterday', icon: '💰' },
-                { action: 'Agent debate completed', target: 'Best neighborhood in Dubai', time: 'Yesterday', icon: '🤖' },
-                { action: 'Document verified', target: 'passport_scan.pdf', time: '2 days ago', icon: '✅' },
-                { action: 'Saved report', target: 'Berlin Relocation Analysis', time: '3 days ago', icon: '📑' },
-                { action: 'Ran stress test', target: 'Black swan scenarios', time: '3 days ago', icon: '⚡' },
-                { action: 'Updated profile', target: 'Income & preferences', time: '1 week ago', icon: '👤' },
-              ].map((item, i) => (
-                <div key={i} style={{ background: 'rgba(255,255,255,0.03)', borderRadius: '12px', padding: '16px 20px', display: 'flex', alignItems: 'center', gap: '16px', border: '1px solid rgba(255,255,255,0.05)' }}>
-                  <div style={{ fontSize: '24px' }}>{item.icon}</div>
-                  <div style={{ flex: 1 }}>
-                    <p style={{ fontSize: '14px', color: 'white', marginBottom: '2px' }}>{item.action}</p>
-                    <p style={{ fontSize: '12px', color: 'rgba(255,255,255,0.5)' }}>{item.target}</p>
-                  </div>
-                  <span style={{ fontSize: '12px', color: 'rgba(255,255,255,0.4)' }}>{item.time}</span>
-                </div>
-              ))}
-            </div>
-          </>
+            {twinsLoading ? (
+              <div style={{ textAlign: 'center', padding: '80px 0', color: 'rgba(255,255,255,0.5)' }}>
+                <div style={{ fontSize: '40px', marginBottom: '16px', animation: 'spin 1s linear infinite' }}>⏳</div>
+                <p>Loading twins from backend...</p>
+              </div>
+            ) : savedTwins.length === 0 ? (
+              <div style={{ textAlign: 'center', padding: '80px 20px', background: 'rgba(255,255,255,0.03)', borderRadius: '24px', border: '1px solid rgba(255,255,255,0.08)' }}>
+                <div style={{ fontSize: '56px', marginBottom: '16px' }}>🧬</div>
+                <h3 style={{ color: 'rgba(255,255,255,0.5)', fontWeight: 600, marginBottom: '8px' }}>No twins yet</h3>
+                <p style={{ color: 'rgba(255,255,255,0.3)', fontSize: '14px', marginBottom: '24px' }}>Run a simulation to create your first Financial Digital Twin</p>
+                <motion.button
+                  whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}
+                  onClick={() => setActiveView('simulations')}
+                  style={{ padding: '12px 28px', background: 'linear-gradient(135deg, #667eea, #764ba2)', border: 'none', borderRadius: '12px', color: 'white', fontWeight: 600, cursor: 'pointer', fontSize: '14px' }}
+                >
+                  Create Your Twin →
+                </motion.button>
+              </div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                {savedTwins.map((twin: any, i: number) => (
+                  <motion.div
+                    key={twin.twin_id || i}
+                    initial={{ opacity: 0, y: 16 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: i * 0.05 }}
+                    style={{ background: 'linear-gradient(135deg, rgba(102,126,234,0.08) 0%, rgba(15,15,30,0.95) 100%)', border: '1px solid rgba(102,126,234,0.2)', borderRadius: '20px', padding: '24px' }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '12px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+                        <div style={{ width: '44px', height: '44px', borderRadius: '12px', background: 'linear-gradient(135deg, #667eea, #764ba2)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '20px' }}>🧬</div>
+                        <div>
+                          <div style={{ fontSize: '15px', fontWeight: 700, color: 'white', marginBottom: '3px' }}>
+                            Twin {twin.twin_id || `#${i + 1}`}
+                          </div>
+                          <div style={{ fontSize: '12px', color: 'rgba(255,255,255,0.4)' }}>
+                            {twin.total_simulations ?? 0} simulation{(twin.total_simulations ?? 0) !== 1 ? 's' : ''} · Last: {twin.last_simulation ?? twin.best_city ?? '—'}
+                          </div>
+                        </div>
+                      </div>
+                      <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', alignItems: 'center' }}>
+                        {twin.best_city && (
+                          <div style={{ padding: '6px 14px', background: 'rgba(16,185,129,0.15)', border: '1px solid rgba(16,185,129,0.3)', borderRadius: '20px', fontSize: '12px', color: '#4ade80', fontWeight: 600 }}>
+                            Best: {twin.best_city}
+                          </div>
+                        )}
+                        <div style={{ fontSize: '12px', color: 'rgba(255,255,255,0.35)' }}>
+                          {twin.last_updated ? new Date(twin.last_updated).toLocaleDateString() : '—'}
+                        </div>
+                      </div>
+                    </div>
+                  </motion.div>
+                ))}
+              </div>
+            )}
+          </div>
         );
 
-      case 'notifications':
+      // ── Profile ──────────────────────────────────────────────────────────
+      case 'profile':
         return (
-          <>
-            <div style={{ marginBottom: '32px', textAlign: 'center' }}>
-              <h2 style={{ fontSize: '32px', fontWeight: 700, color: 'white', marginBottom: '8px' }}>Notifications</h2>
-              <p style={{ color: 'rgba(255,255,255,0.6)', fontSize: '16px' }}>Stay updated with important alerts</p>
+          <div style={{ maxWidth: '700px', margin: '0 auto' }}>
+            <div style={{ textAlign: 'center', marginBottom: '40px' }}>
+              <h2 style={{ fontSize: '32px', fontWeight: 800, color: 'white', marginBottom: '8px' }}>Profile</h2>
+              <p style={{ color: 'rgba(255,255,255,0.5)' }}>Your Financial Twin configuration</p>
+            </div>
+            <div style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '24px', padding: '32px', display: 'flex', flexDirection: 'column', gap: '20px' }}>
+              {[
+                { label: 'Name', value: profileData.name, key: 'name' },
+                { label: 'Email', value: profileData.email, key: 'email' },
+                { label: 'Location', value: profileData.location, key: 'location' },
+                { label: 'Annual Income', value: profileData.income, key: 'income' },
+                { label: 'Currency', value: profileData.currency, key: 'currency' },
+                { label: 'Target Cities', value: profileData.targetCities, key: 'targetCities' },
+              ].map(field => (
+                <div key={field.key} style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                  <label style={{ fontSize: '12px', color: 'rgba(255,255,255,0.4)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px' }}>{field.label}</label>
+                  <input
+                    value={field.value}
+                    onChange={e => setProfileData((p: any) => ({ ...p, [field.key]: e.target.value }))}
+                    style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.12)', borderRadius: '10px', padding: '12px 16px', color: 'white', fontSize: '14px', outline: 'none', transition: 'border-color 0.2s' }}
+                    onFocus={e => e.target.style.borderColor = 'rgba(102,126,234,0.5)'}
+                    onBlur={e => e.target.style.borderColor = 'rgba(255,255,255,0.12)'}
+                  />
+                </div>
+              ))}
+              <motion.button
+                whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}
+                onClick={() => toast.success('Profile saved!')}
+                style={{ padding: '14px', background: 'linear-gradient(135deg, #667eea, #764ba2)', border: 'none', borderRadius: '12px', color: 'white', fontWeight: 600, cursor: 'pointer', fontSize: '15px', marginTop: '8px' }}
+              >
+                Save Profile
+              </motion.button>
+            </div>
+          </div>
+        );
+
+      // ── Settings ─────────────────────────────────────────────────────────
+      case 'settings':
+        return (
+          <div style={{ maxWidth: '700px', margin: '0 auto' }}>
+            <div style={{ textAlign: 'center', marginBottom: '40px' }}>
+              <h2 style={{ fontSize: '32px', fontWeight: 800, color: 'white', marginBottom: '8px' }}>Settings</h2>
+              <p style={{ color: 'rgba(255,255,255,0.5)' }}>Configure your Equinox Nexus preferences</p>
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
               {[
-                { title: 'Tax deadline reminder', message: 'German tax filing deadline is approaching (March 31)', type: 'warning', time: '1 hour ago', unread: true },
-                { title: 'New treaty update', message: 'Singapore-US tax treaty Article 17 has been amended', type: 'info', time: '3 hours ago', unread: true },
-                { title: 'Simulation complete', message: 'Your Monte Carlo simulation for Berlin has finished', type: 'success', time: '5 hours ago', unread: true },
-                { title: 'Market alert', message: 'EUR/USD exchange rate dropped 2.3% - may affect your projections', type: 'warning', time: 'Yesterday', unread: false },
-                { title: 'Document expiring', message: 'Your uploaded passport expires in 6 months', type: 'warning', time: 'Yesterday', unread: false },
-                { title: 'New feature available', message: 'Try our new AI Agent Debate feature for consensus-based recommendations', type: 'info', time: '2 days ago', unread: false },
-                { title: 'Weekly summary ready', message: 'Your weekly financial health report is available', type: 'success', time: '3 days ago', unread: false },
-              ].map((notif, i) => (
-                <div key={i} style={{ 
-                  background: notif.unread ? 'linear-gradient(135deg, rgba(102, 126, 234, 0.15) 0%, rgba(118, 75, 162, 0.1) 100%)' : 'rgba(255,255,255,0.03)', 
-                  borderRadius: '12px', 
-                  padding: '16px 20px', 
-                  display: 'flex', 
-                  alignItems: 'flex-start', 
-                  gap: '16px', 
-                  border: notif.unread ? '1px solid rgba(102, 126, 234, 0.3)' : '1px solid rgba(255,255,255,0.05)',
-                  position: 'relative'
-                }}>
-                  {notif.unread && <div style={{ position: 'absolute', top: '20px', left: '8px', width: '8px', height: '8px', borderRadius: '50%', background: '#667eea' }} />}
-                  <div style={{ 
-                    width: '40px', height: '40px', borderRadius: '10px', 
-                    background: notif.type === 'warning' ? 'rgba(245, 158, 11, 0.2)' : notif.type === 'success' ? 'rgba(16, 185, 129, 0.2)' : 'rgba(59, 130, 246, 0.2)',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0
-                  }}>
-                    <span style={{ fontSize: '18px' }}>{notif.type === 'warning' ? '⚠️' : notif.type === 'success' ? '✅' : 'ℹ️'}</span>
+                { key: 'darkMode', label: 'Dark Mode', sub: 'Always on for optimal readability' },
+                { key: 'emailNotifications', label: 'Email Notifications', sub: 'Twin drift alerts and reports' },
+                { key: 'agentAlerts', label: 'Agent Alerts', sub: 'FX threshold monitoring notifications' },
+                { key: 'dataEncryption', label: 'Data Encryption', sub: 'All profile data encrypted at rest' },
+                { key: 'anonymousAnalytics', label: 'Anonymous Analytics', sub: 'Help improve the platform' },
+              ].map(s => (
+                <div key={s.key} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '16px', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '14px', padding: '16px 20px' }}>
+                  <div>
+                    <div style={{ fontSize: '14px', fontWeight: 600, color: 'white', marginBottom: '2px' }}>{s.label}</div>
+                    <div style={{ fontSize: '12px', color: 'rgba(255,255,255,0.4)' }}>{s.sub}</div>
                   </div>
-                  <div style={{ flex: 1 }}>
-                    <h4 style={{ fontSize: '14px', fontWeight: 600, color: 'white', marginBottom: '4px' }}>{notif.title}</h4>
-                    <p style={{ fontSize: '13px', color: 'rgba(255,255,255,0.6)', marginBottom: '6px' }}>{notif.message}</p>
-                    <span style={{ fontSize: '11px', color: 'rgba(255,255,255,0.4)' }}>{notif.time}</span>
+                  <div
+                    onClick={() => setSettings((prev: any) => ({ ...prev, [s.key]: !prev[s.key] }))}
+                    style={{
+                      width: '44px', height: '24px', borderRadius: '12px', cursor: 'pointer', flexShrink: 0,
+                      background: settings[s.key] ? 'linear-gradient(135deg, #667eea, #764ba2)' : 'rgba(255,255,255,0.12)',
+                      position: 'relative', transition: 'background 0.25s'
+                    }}
+                  >
+                    <div style={{
+                      width: '18px', height: '18px', borderRadius: '50%', background: 'white',
+                      position: 'absolute', top: '3px', transition: 'left 0.25s',
+                      left: settings[s.key] ? '23px' : '3px'
+                    }} />
                   </div>
                 </div>
               ))}
             </div>
-          </>
+          </div>
         );
-      
+
+      // ── Help ─────────────────────────────────────────────────────────────
+      case 'help':
+        return (
+          <div style={{ maxWidth: '800px', margin: '0 auto' }}>
+            <div style={{ textAlign: 'center', marginBottom: '40px' }}>
+              <h2 style={{ fontSize: '32px', fontWeight: 800, color: 'white', marginBottom: '8px' }}>Help & Documentation</h2>
+              <p style={{ color: 'rgba(255,255,255,0.5)' }}>Everything you need to know about Equinox Nexus</p>
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '16px' }}>
+              {[
+                { icon: '🧠', title: 'How Agents Work', desc: 'Actuary, Fiscal Ghost, Nexus, Chronos, and Decision Intelligence run in a parallel LangGraph pipeline. Each agent specialises in one dimension of your relocation.', color: '#667eea' },
+                { icon: '📊', title: 'Monte Carlo Simulation', desc: 'Chronos runs 1,000 GBM paths with Prophet-forecast FX drift to produce P5/P50/P95 wealth bands over 5 years.', color: '#10b981' },
+                { icon: '⚖️', title: 'Tax Treaty (DTA)', desc: 'The Nexus queries a RAG knowledge base built from OECD data to find applicable double taxation agreements and calculate your actual tax burden.', color: '#a855f7' },
+                { icon: '🧬', title: 'Financial Twins', desc: 'Each simulation creates a persistent Financial Digital Twin stored in SQLite. Your twin accumulates history and detects drift when FX rates shift.', color: '#3b82f6' },
+                { icon: '🔍', title: 'XAI Factor Analysis', desc: 'The SHAP-inspired factor decomposition explains exactly how each dimension (Tax, QoL, CoL, FX, Savings) contributed to your viability score.', color: '#f59e0b' },
+                { icon: '⚡', title: 'Quick Start', desc: 'Go to New Simulation, enter your income and target cities, click Run. All 5 agents execute in parallel and stream results back in real time via SSE.', color: '#06b6d4' },
+              ].map((item, i) => (
+                <div key={i} style={{ background: `linear-gradient(135deg, ${item.color}10 0%, rgba(15,15,30,0.95) 100%)`, border: `1px solid ${item.color}25`, borderRadius: '20px', padding: '24px' }}>
+                  <div style={{ fontSize: '32px', marginBottom: '12px' }}>{item.icon}</div>
+                  <h3 style={{ fontSize: '16px', fontWeight: 700, color: 'white', marginBottom: '8px' }}>{item.title}</h3>
+                  <p style={{ color: 'rgba(255,255,255,0.6)', fontSize: '13px', lineHeight: 1.7 }}>{item.desc}</p>
+                </div>
+              ))}
+            </div>
+            <div style={{ marginTop: '24px', padding: '20px', background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.2)', borderRadius: '14px' }}>
+              <p style={{ fontSize: '13px', color: 'rgba(255,255,255,0.5)', lineHeight: 1.7, margin: 0 }}>
+                <strong style={{ color: '#f59e0b' }}>⚠️ Disclaimer:</strong> Projections are AI-generated estimates for planning purposes only. Tax calculations use current treaty rates which may change. Consult qualified financial and legal professionals before making relocation decisions.
+              </p>
+            </div>
+          </div>
+        );
+
+      // ── Dashboard (default) ──────────────────────────────────────────────
       case 'dashboard':
       default:
         return (
           <>
             <HeroSection />
-            <div style={{ marginTop: '40px' }}>
-              <LiveMetrics />
-            </div>
-            <div style={{ marginTop: '60px' }}>
-              <div style={{ textAlign: 'center', maxWidth: '600px', margin: '0 auto 48px' }}>
-                <h2 style={{ fontSize: '28px', fontWeight: 700, color: 'white', marginBottom: '8px' }}>
-                  Global Opportunity Map
-                </h2>
-                <p style={{ color: 'rgba(255,255,255,0.6)', fontSize: '16px' }}>
-                  Explore real-time migration opportunities worldwide
-                </p>
+            <div style={{ marginTop: '60px', maxWidth: '1100px', margin: '60px auto 0' }}>
+              {/* Agent Status Row */}
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '14px', marginBottom: '48px' }}>
+                {[
+                  { icon: '🧠', name: 'The Actuary', sub: 'QoL & Health Risk', color: '#10b981', status: 'Ready' },
+                  { icon: '💸', name: 'Fiscal Ghost', sub: 'Expense Model (XGBoost)', color: '#f59e0b', status: 'Ready' },
+                  { icon: '⚖️', name: 'The Nexus', sub: 'RAG + Tax Treaty', color: '#a855f7', status: 'Ready' },
+                  { icon: '📊', name: 'Chronos', sub: 'Monte Carlo 1K paths', color: '#3b82f6', status: 'Ready' },
+                  { icon: '⚡', name: 'Decision AI', sub: 'Groq llama-3.3-70b', color: '#06b6d4', status: 'Ready' },
+                ].map((agent, i) => (
+                  <motion.div
+                    key={i}
+                    initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: i * 0.08 }}
+                    style={{ background: `linear-gradient(135deg, ${agent.color}10 0%, rgba(15,15,30,0.9) 100%)`, border: `1px solid ${agent.color}25`, borderRadius: '16px', padding: '18px 16px' }}
+                  >
+                    <div style={{ fontSize: '24px', marginBottom: '8px' }}>{agent.icon}</div>
+                    <div style={{ fontSize: '13px', fontWeight: 700, color: 'white', marginBottom: '3px' }}>{agent.name}</div>
+                    <div style={{ fontSize: '11px', color: 'rgba(255,255,255,0.4)', marginBottom: '10px' }}>{agent.sub}</div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+                      <div style={{ width: '6px', height: '6px', borderRadius: '50%', background: agent.color }} />
+                      <span style={{ fontSize: '11px', color: agent.color, fontWeight: 600 }}>{agent.status}</span>
+                    </div>
+                  </motion.div>
+                ))}
               </div>
-              <InteractiveGlobe onRunAnalysis={(cityName, country) => {
+
+              {/* Globe + Simulation Form */}
+              <div style={{ textAlign: 'center', marginBottom: '32px' }}>
+                <h2 style={{ fontSize: '28px', fontWeight: 800, color: 'white', marginBottom: '8px' }}>Global Opportunity Map</h2>
+                <p style={{ color: 'rgba(255,255,255,0.5)', fontSize: '15px' }}>Click a city on the globe or fill the form below to run your AI simulation</p>
+              </div>
+              <InteractiveGlobe onRunAnalysis={(cityName: string, country: string) => {
                 toast.success(`Starting analysis for ${cityName}, ${country}...`, { duration: 2000 });
-                handleSimulation({
-                  current_salary: 95000,
-                  target_locations: [`${cityName}, ${country}`],
-                  risk_tolerance: 'moderate'
-                });
+                handleSimulation({ current_salary: 95000, target_locations: [`${cityName}, ${country}`], risk_tolerance: 'moderate' });
               }} />
-            </div>
-            <div style={{ marginTop: '60px', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(350px, 1fr))', gap: '32px', alignItems: 'start' }}>
-              <div style={{ gridColumn: 'span 2' }}>
-                <div style={{
-                  background: 'linear-gradient(135deg, rgba(102, 126, 234, 0.1) 0%, rgba(118, 75, 162, 0.05) 100%)',
-                  backdropFilter: 'blur(24px)',
-                  border: '1px solid rgba(102, 126, 234, 0.2)',
-                  borderRadius: '28px',
-                  padding: '40px'
-                }}>
-                  <div style={{ marginBottom: '32px' }}>
-                    <h2 style={{ fontSize: '24px', fontWeight: 700, color: 'white', marginBottom: '8px' }}>
-                      Configure Your Simulation
-                    </h2>
-                    <p style={{ color: 'rgba(255,255,255,0.5)', fontSize: '14px' }}>
-                      Enter your details to receive personalized AI-powered insights
-                    </p>
-                  </div>
-                  <SimulationForm onSubmit={handleSimulation} isLoading={isLoading} />
-                </div>
-
-
-              </div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '32px' }}>
-                <AIInsights />
-                <AgentShowcase />
+              <div style={{ marginTop: '60px', background: 'linear-gradient(135deg, rgba(102,126,234,0.1) 0%, rgba(118,75,162,0.05) 100%)', backdropFilter: 'blur(24px)', border: '1px solid rgba(102,126,234,0.2)', borderRadius: '28px', padding: '40px' }}>
+                <h3 style={{ fontSize: '22px', fontWeight: 700, color: 'white', marginBottom: '8px' }}>Configure Your Simulation</h3>
+                <p style={{ color: 'rgba(255,255,255,0.5)', fontSize: '14px', marginBottom: '32px' }}>Enter your details and let 5 AI agents analyse your relocation in real time</p>
+                <SimulationForm onSubmit={handleSimulation} isLoading={isLoading} />
               </div>
             </div>
           </>
         );
     }
   };
+
 
   return (
     <>
@@ -2040,6 +1552,7 @@ export default function Home() {
         onClose={() => setSidebarOpen(false)}
         onNavigate={handleNavigate}
         activeView={activeView}
+        hasSimulationData={!!simulationData}
       />
       
       <main style={{ 
@@ -2198,7 +1711,7 @@ export default function Home() {
                 zIndex: 50
               }}
             >
-              <ArrowUp style={{ width: '20px', height: '20px', color: 'white' }} />
+              <svg style={{ width: '20px', height: '20px', color: 'white' }} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M12 19V5M5 12l7-7 7 7"/></svg>
             </motion.button>
           )}
         </AnimatePresence>
@@ -2266,7 +1779,7 @@ export default function Home() {
                       color: 'white'
                     }}
                   >
-                    <X style={{ width: '18px', height: '18px' }} />
+                    <svg style={{ width: '18px', height: '18px' }} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
                   </motion.button>
                 </div>
 
@@ -2279,7 +1792,7 @@ export default function Home() {
                     <input
                       type="text"
                       value={profileData.name}
-                      onChange={(e) => setProfileData(prev => ({ ...prev, name: e.target.value }))}
+                      onChange={(e) => setProfileData((prev: any) => ({ ...prev, name: e.target.value }))}
                       style={{
                         width: '100%',
                         boxSizing: 'border-box',
@@ -2301,7 +1814,7 @@ export default function Home() {
                     <input
                       type="email"
                       value={profileData.email}
-                      onChange={(e) => setProfileData(prev => ({ ...prev, email: e.target.value }))}
+                      onChange={(e) => setProfileData((prev: any) => ({ ...prev, email: e.target.value }))}
                       style={{
                         width: '100%',
                         boxSizing: 'border-box',
@@ -2323,7 +1836,7 @@ export default function Home() {
                     <input
                       type="text"
                       value={profileData.location}
-                      onChange={(e) => setProfileData(prev => ({ ...prev, location: e.target.value }))}
+                      onChange={(e) => setProfileData((prev: any) => ({ ...prev, location: e.target.value }))}
                       style={{
                         width: '100%',
                         boxSizing: 'border-box',
@@ -2345,7 +1858,7 @@ export default function Home() {
                     <input
                       type="number"
                       value={profileData.income}
-                      onChange={(e) => setProfileData(prev => ({ ...prev, income: e.target.value }))}
+                      onChange={(e) => setProfileData((prev: any) => ({ ...prev, income: e.target.value }))}
                       style={{
                         width: '100%',
                         boxSizing: 'border-box',
@@ -2367,7 +1880,7 @@ export default function Home() {
                     <input
                       type="text"
                       value={profileData.targetCities}
-                      onChange={(e) => setProfileData(prev => ({ ...prev, targetCities: e.target.value }))}
+                      onChange={(e) => setProfileData((prev: any) => ({ ...prev, targetCities: e.target.value }))}
                       style={{
                         width: '100%',
                         boxSizing: 'border-box',
