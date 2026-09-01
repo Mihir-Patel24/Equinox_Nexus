@@ -1,10 +1,16 @@
 """
-Compliance RAG Engine — Equinox Nexus v3.0
+Compliance RAG Engine — Equinox Nexus v3.1
 Uses ChromaDB (local vector store) + sentence-transformers (local embeddings).
 NO API KEY REQUIRED. Fully offline inference.
 
 Documents are chunked compliance KB markdown files covering:
-UK, Germany, Singapore, UAE, USA, Japan, Australia, India, Netherlands, Canada
+UK, Germany, Singapore, UAE, USA, Japan, Australia, India, Netherlands, Canada + 16 more
+
+v3.1 upgrades:
+  - Chunks now carry section_title, effective_year, jurisdiction metadata
+  - query() returns these fields so downstream evidence chain can trace every claim
+  - get_evidence_brief() calls EvidenceChain.build() for fully traced compliance output
+  - Backward-compatible: get_compliance_brief() still works for legacy callers
 """
 
 import os
@@ -15,7 +21,13 @@ from typing import List, Dict, Any, Optional
 from pathlib import Path
 
 KB_DIR = Path(__file__).parent / "compliance_kb"
-CHROMA_DIR = Path(__file__).parent / "chroma_db"
+
+# Allow CHROMA_PERSIST_DIR env var to override the default local path.
+# In Docker production: CHROMA_PERSIST_DIR=/app/chroma_data (mounted named volume)
+# In local dev: falls back to rag/chroma_db/ (existing behaviour)
+_chroma_env_dir = os.environ.get("CHROMA_PERSIST_DIR")
+CHROMA_DIR = Path(_chroma_env_dir) if _chroma_env_dir else Path(__file__).parent / "chroma_db"
+
 INDEX_HASH_FILE = Path(__file__).parent / "kb_index.hash"
 
 # Lazy imports — only load heavy libraries when needed
@@ -68,6 +80,43 @@ def _chunk_document(text: str, chunk_size: int = 400, overlap: int = 80) -> List
     return chunks
 
 
+def _extract_section_title(text: str) -> str:
+    """
+    Find the closest section header (## or ###) mentioned in the chunk text.
+    Returns a clean section label, or 'General' if none found.
+    """
+    import re
+    headers = re.findall(r'^#{1,3}\s+(.+)$', text, re.MULTILINE)
+    if headers:
+        return headers[-1].strip()
+    return "General"
+
+
+def _extract_effective_year(text: str, filepath: str) -> int:
+    """
+    Extract the most recent year mentioned in the chunk.
+    Checks text first, falls back to file modification year.
+    """
+    import re, os
+    years = re.findall(r'\b(202[0-7]|201[89])\b', text)
+    if years:
+        return max(int(y) for y in years)
+    try:
+        from datetime import datetime
+        return datetime.fromtimestamp(os.path.getmtime(filepath)).year
+    except Exception:
+        return 2024
+
+
+def _extract_jurisdiction(filepath: str) -> str:
+    """
+    Derive a clean jurisdiction name from the KB filename.
+    e.g. 'singapore_compliance.md' -> 'Singapore'
+    """
+    stem = Path(filepath).stem
+    return stem.replace('_compliance', '').replace('_', ' ').title()
+
+
 def build_index(force: bool = False) -> int:
     """
     Build or rebuild the ChromaDB index from all KB markdown files.
@@ -105,17 +154,23 @@ def build_index(force: bool = False) -> int:
 
     for filepath in md_files:
         country_name = Path(filepath).stem.replace("_compliance", "").replace("_", " ").title()
+        jurisdiction = _extract_jurisdiction(filepath)
         text = Path(filepath).read_text(encoding="utf-8")
         chunks = _chunk_document(text)
 
         for j, chunk in enumerate(chunks):
             chunk_id = f"{Path(filepath).stem}_{j}"
+            section_title = _extract_section_title(chunk)
+            effective_year = _extract_effective_year(chunk, filepath)
             all_chunks.append(chunk)
             all_ids.append(chunk_id)
             all_metadata.append({
-                "source": Path(filepath).name,
-                "country": country_name,
-                "chunk_index": j,
+                "source":         Path(filepath).name,
+                "country":        country_name,
+                "jurisdiction":   jurisdiction,
+                "section_title":  section_title,
+                "effective_year": effective_year,
+                "chunk_index":    j,
             })
 
     # Encode in batches
@@ -191,9 +246,12 @@ class ComplianceRAGEngine:
                 similarity = round(1.0 - dist, 4)
                 if similarity > 0.15:  # Filter very low relevance
                     passages.append({
-                        "text": doc,
-                        "source": meta.get("source", "unknown"),
-                        "country": meta.get("country", "unknown"),
+                        "text":           doc,
+                        "source":         meta.get("source", "unknown"),
+                        "country":        meta.get("country", "unknown"),
+                        "jurisdiction":   meta.get("jurisdiction", meta.get("country", "unknown")),
+                        "section_title":  meta.get("section_title", "General"),
+                        "effective_year": meta.get("effective_year", 2024),
                         "relevance_score": similarity,
                     })
 
@@ -253,6 +311,85 @@ class ComplianceRAGEngine:
             "sources_used": list({p["source"] for p in top_passages}),
             "rag_retrieval_count": len(top_passages),
             "retrieval_method": "ChromaDB + all-MiniLM-L6-v2 (local)",
+        }
+
+
+    def get_evidence_brief(
+        self,
+        city: str,
+        country: str,
+        income: float,
+        currency: str = "USD",
+        query_topics: Optional[List[str]] = None,
+    ) -> Dict[str, Any]:
+        """
+        v3.1 Evidence-First method.
+        Returns a fully traced compliance brief where every claim is linked to:
+          - source file, jurisdiction, section, effective year, confidence, freshness
+
+        Replaces get_compliance_brief() for NexusAgent's primary call.
+        get_compliance_brief() is preserved for backward compatibility.
+        """
+        if query_topics is None:
+            query_topics = [
+                f"income tax rates {country} employed professional",
+                f"visa work permit {country} highly skilled professional",
+                f"social security contributions {country} employee",
+                f"double taxation agreement DTA {country}",
+            ]
+
+        all_passages = []
+        for topic in query_topics:
+            passages = self.query(question=topic, k=4)
+            all_passages.extend(passages)
+
+        # Deduplicate by text prefix
+        seen = set()
+        unique_passages = []
+        for p in all_passages:
+            key = p["text"][:100]
+            if key not in seen:
+                seen.add(key)
+                unique_passages.append(p)
+
+        unique_passages.sort(key=lambda x: x["relevance_score"], reverse=True)
+        top_passages = unique_passages[:8]
+
+        # Build evidence chain
+        from rag.evidence_chain import EvidenceChain
+        from datetime import datetime
+        chain = EvidenceChain()
+        evidence = chain.build(
+            passages=top_passages,
+            topic_queries=query_topics,
+            country=country,
+            current_year=datetime.utcnow().year,
+        )
+
+        # Backward-compatible brief text from enriched passages
+        brief_text = "\n\n---\n\n".join([
+            (
+                f"[Source: {p.get('jurisdiction', country)} | "
+                f"Section: {p.get('section_title', 'General')} | "
+                f"Year: {p.get('effective_year', '?')} | "
+                f"Confidence: {p.get('relevance_score', 0):.2f}]\n{p['text']}"
+            )
+            for p in top_passages
+        ])
+
+        return {
+            # v3.1 evidence fields
+            "evidence_claims":   evidence["claims"],
+            "evidence_gaps":     evidence["evidence_gaps"],
+            "evidence_summary":  evidence["evidence_summary"],
+            "enriched_passages": evidence["enriched_passages"],
+
+            # Legacy fields (preserved)
+            "retrieved_passages":    top_passages,
+            "compliance_brief":      brief_text,
+            "sources_used":          list({p["source"] for p in top_passages}),
+            "rag_retrieval_count":   len(top_passages),
+            "retrieval_method":      "ChromaDB + all-MiniLM-L6-v2 (local) + EvidenceChain v3.1",
         }
 
 
