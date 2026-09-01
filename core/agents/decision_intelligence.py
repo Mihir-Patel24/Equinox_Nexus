@@ -70,19 +70,22 @@ class DecisionIntelligenceAgent:
             }
             payload = {
                 "model": "llama-3.3-70b-versatile",
-                "messages": [{"role": "user", "content": prompt}],
+                "messages": [
+                    {"role": "system", "content": "You are a financial relocation intelligence system. Always respond with valid JSON only."},
+                    {"role": "user", "content": prompt}
+                ],
                 "temperature": 0.3,
-                "response_format": {"type": "json_object"}
+                "max_tokens": 512
             }
-            response = requests.post(GROQ_API_URL, headers=headers, json=payload, timeout=10.0)
-            if response.status_code == 200:
-                res_data = response.json()
-                content = res_data["choices"][0]["message"]["content"]
-                result = json.loads(content)
-                return {
-                    "decision_viability_score": result.get("score"),
-                    "dynamic_reasoning": result.get("rationale")
-                }
+            res = requests.post(GROQ_API_URL, headers=headers, json=payload, timeout=30)
+            res.raise_for_status()
+            res_data = res.json()
+            content = res_data["choices"][0]["message"]["content"]
+            result = json.loads(content)
+            return {
+                "decision_viability_score": result.get("score"),
+                "dynamic_reasoning": result.get("rationale")
+            }
         except Exception as e:
             print(f"DecisionIntelligence: API call failed ({e})")
 

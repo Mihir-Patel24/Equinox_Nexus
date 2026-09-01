@@ -1,24 +1,30 @@
 """
 LangGraph Orchestrator — Equinox Nexus v3.1
 
-Architecture: True Parallel Fan-Out (ThreadPool Fan-Out → Sequential Fan-In)
+Architecture: Adaptive Fan-Out (Planner -> Conditional Parallel -> Sequential Fan-In)
 ─────────────────────────────────────────────────────────────────────────────
                     [entry]
-                       │
-         ┌─────────────┼─────────────┐
-         ▼             ▼             ▼
-      [actuary]    [fiscal_ghost]  [nexus]      ← PARALLEL (ThreadPoolExecutor)
-         └─────────────┼─────────────┘
-                       │ (fan-in — merge all three results into state)
-                       ▼
-                   [chronos]                   ← depends on ghost + nexus output
-                       │
-                       ▼
-          [decision_intelligence_agent]         ← Groq LLM synthesis
-                       │
-                       ▼
-                  [aggregator]                  ← XAI + final report
-                       │
+                       |
+                  [planner]                   <- reads twin history, writes agent_plan
+                       |
+         .-------------|------------.
+         |             |            |
+    [actuary?]  [fiscal_ghost]  [nexus?]      <- CONDITIONAL parallel (ThreadPool)
+    (skipped if   (always runs)  (skipped if
+     same city,                   same country,
+     QoL fresh)                   compliance fresh)
+         |             |            |
+         `-------------|------------'
+                       | (fan-in -- merge all results into state)
+                       v
+                   [chronos]                  <- depends on ghost + nexus output
+                       |
+                       v
+          [decision_intelligence_agent]       <- Groq LLM synthesis
+                       |
+                       v
+                  [aggregator]               <- XAI + final report
+                       |
                       END
 ─────────────────────────────────────────────────────────────────────────────
 
@@ -27,6 +33,10 @@ Why ThreadPoolExecutor instead of LangGraph Send API?
   when multiple branches write to the same Annotated state keys simultaneously.
   ThreadPoolExecutor gives us true wall-clock parallelism with clean state merge.
   Net result: 3 agents run in parallel, cutting latency from ~8s to ~2-3s.
+
+v3.1 change: PlannerNode inserted before the fan-out.
+  Skipped agents reuse cached data from the twin's last SimulationRecord.
+  This prevents unnecessary model calls when data is still fresh.
 """
 
 from typing import Dict, Any
@@ -38,6 +48,7 @@ from .fiscal_ghost.ghost import FiscalGhostAgent
 from .nexus.nexus import NexusAgent
 from .chronos.chronos import ChronosAgent
 from .decision_intelligence import DecisionIntelligenceAgent
+from .planner import PlannerNode
 
 import sys, os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
@@ -51,6 +62,18 @@ nexus     = NexusAgent()
 chronos   = ChronosAgent()
 decision_agent = DecisionIntelligenceAgent()
 explainer = ViabilityExplainer()
+_planner  = PlannerNode()
+
+
+# ── PlannerNode Graph Function ──────────────────────────────────────────────
+
+def run_planner(state: AgentState) -> Dict[str, Any]:
+    """
+    PlannerNode graph function.
+    Reads the twin's history and writes agent_plan into state.
+    Also re-injects cached agent outputs if any agents are skipped.
+    """
+    return _planner.plan(state)
 
 
 # ── Individual Agent Functions (same logic as before) ───────────────────────
@@ -171,33 +194,32 @@ def _merge_partial(base: AgentState, partial: Dict[str, Any]) -> None:
 
 def run_parallel_agents(state: AgentState) -> Dict[str, Any]:
     """
-    Run Actuary, Fiscal Ghost, and Nexus agents in parallel using a thread pool.
-    All three own independent state keys so there are no write conflicts.
-    Results are merged back into a single state update dict.
-
-    Wall-clock time:
-      Before: actuary(~1s) + ghost(~1s) + nexus(~2s) = ~4s sequential
-      After:  max(actuary, ghost, nexus) = ~2s parallel
+    Run agents in parallel using a thread pool.
+    Reads agent_plan to skip agents whose cached data is still fresh.
     """
-    print(f"[Parallel] Launching Actuary + Fiscal Ghost + Nexus for {state['target_city']}...")
+    plan          = state.get("agent_plan") or {}
+    agents_to_run = plan.get("agents_to_run", ["actuary", "fiscal_ghost", "nexus"])
+    skipped       = plan.get("agents_skipped", [])
 
-    agent_fns = {
+    print(f"[Parallel] Running: {agents_to_run} | Skipped: {skipped} for {state['target_city']}...")
+
+    all_agent_fns = {
         "actuary":      _run_actuary,
         "fiscal_ghost": _run_ghost,
         "nexus":        _run_nexus,
     }
-
-    # Accumulated output — will be merged and returned as state update
+    
+    agent_fns = {name: fn for name, fn in all_agent_fns.items() if name in agents_to_run}
     merged: Dict[str, Any] = {
         "agent_reasoning": [],
         "errors": [],
     }
 
-    with ThreadPoolExecutor(max_workers=3) as executor:
-        futures = {
-            executor.submit(fn, state): name
-            for name, fn in agent_fns.items()
-        }
+    if not agent_fns:
+        return merged
+
+    with ThreadPoolExecutor(max_workers=len(agent_fns)) as executor:
+        futures = {executor.submit(fn, state): name for name, fn in agent_fns.items()}
 
         for future in as_completed(futures):
             agent_name = futures[future]
@@ -206,17 +228,11 @@ def run_parallel_agents(state: AgentState) -> Dict[str, Any]:
                 _merge_partial(merged, partial_result)
                 print(f"[Parallel] [OK] {agent_name} complete")
             except Exception as e:
-                # Fail-safe: log but don't crash the pipeline
                 error_msg = f"{agent_name} thread error: {e}"
                 merged["errors"].append(error_msg)
-                merged["agent_reasoning"].append({
-                    "agent": agent_name,
-                    "error": error_msg,
-                    "status": "thread_exception",
-                })
+                merged["agent_reasoning"].append({"agent": agent_name, "error": error_msg, "status": "thread_exception"})
                 print(f"[Parallel] [FAIL] {agent_name} failed: {e}")
 
-    print(f"[Parallel] All 3 agents complete. Errors: {merged['errors']}")
     return merged
 
 
@@ -299,63 +315,47 @@ def run_decision_intelligence(state: AgentState) -> Dict[str, Any]:
 def aggregator(state: AgentState) -> Dict[str, Any]:
     """
     Aggregator: Combines all agent outputs into the final report.
-    Calls XAI explainer to produce factor decomposition.
-    All calculations are derived from agent outputs — zero hardcoding.
     """
-    print("Aggregator: Compiling final report + XAI explanation...")
+    print("Aggregator: Compiling final report...")
 
     tax_info     = state.get("compliance_analysis") or {}
     expense_info = state.get("expense_analysis") or {}
     risk_info    = state.get("risk_analysis") or {}
     mc           = state.get("monte_carlo_result") or {}
     user         = state.get("user_profile") or {}
+    plan         = state.get("agent_plan") or {}
 
-    # ── Core financial calculations ──────────────────────────────────
     net_income      = tax_info.get("net_annual_income", 0)
     proj_expenses   = expense_info.get("projected_expenses", 0) or 0
     annual_expenses = proj_expenses * 12
     annual_savings  = net_income - annual_expenses
     current_wealth  = user.get("current_wealth", 0)
 
-    # ── Quality of Life composite from agent data ────────────────────
     aqi        = risk_info.get("air_quality_index", 75) or 75
     safety     = risk_info.get("safety_score", 65) or 65
     healthcare = risk_info.get("healthcare_score", 70) or 70
     happiness  = risk_info.get("happiness_index", 65) or 65
 
-    # AQI scoring: lower AQI = better air quality
     aqi_score     = max(0, 100 - aqi)
     quality_score = round((safety + healthcare + happiness + aqi_score) / 4, 1)
 
-    # ── XAI Viability Explanation ────────────────────────────────────
     xai_result = explainer.explain_viability(state)
     viability  = xai_result["viability_score"]
 
-    # Override with dynamic Decision Intelligence LLM score if configured
     di_info = state.get("decision_intelligence") or {}
     if di_info and di_info.get("decision_viability_score") is not None:
         viability = di_info["decision_viability_score"]
         xai_result["viability_score"] = viability
-        if di_info.get("dynamic_reasoning"):
-            xai_result["executive_summary"] = di_info["dynamic_reasoning"]
 
-    # ── Deterministic 5-year projection (for chart baseline) ────────
     projection = []
     w = current_wealth
     for year in range(1, 6):
-        # Compound at 7% (long-run market CAGR) with annual savings added
         w = (w + annual_savings) * 1.07
-        projection.append({
-            "year": year,
-            "wealth": round(w, 2),
-            "city": state["target_city"],
-        })
+        projection.append({"year": year, "wealth": round(w, 2), "city": state["target_city"]})
 
-    # ── Monte Carlo summary ─────────────────────────────────────────
     mc_final = mc.get("final_year_stats", {})
     mc_risk  = mc.get("risk_metrics", {})
 
-    # ── Final Report ────────────────────────────────────────────────
     final_report = {
         # Core financial metrics
         "net_annual_savings":  round(annual_savings, 2),
@@ -408,6 +408,15 @@ def aggregator(state: AgentState) -> Dict[str, Any]:
         "value_at_risk_5pct":            mc_risk.get("value_at_risk_5pct", 0),
         "city_inflation_rate":           mc_risk.get("city_inflation_rate", 0.03),
 
+        # Adaptive orchestration transparency
+        "agent_plan_summary": {
+            "agents_run":     plan.get("agents_to_run", []),
+            "agents_skipped": plan.get("agents_skipped", []),
+            "days_since_last": plan.get("days_since_last_sim"),
+            "same_city":      plan.get("same_city", False),
+            "same_country":   plan.get("same_country", False),
+        },
+
         # Data provenance
         "data_sources": [
             risk_info.get("data_source", "QoL model"),
@@ -425,17 +434,18 @@ def aggregator(state: AgentState) -> Dict[str, Any]:
     }
 
 
-# ── LangGraph: Parallel Fan-Out → Sequential Fan-In Architecture ─────────────
+# ── LangGraph: Planner -> Adaptive Parallel Fan-Out -> Sequential Fan-In ─────────────
 
 workflow = StateGraph(AgentState)
 
-workflow.add_node("parallel_agents",             run_parallel_agents)   # ← fan-out (3 agents)
-workflow.add_node("chronos",                     run_chronos)           # ← fan-in starts here
+workflow.add_node("planner",                    run_planner)
+workflow.add_node("parallel_agents",            run_parallel_agents)
+workflow.add_node("chronos",                    run_chronos)
 workflow.add_node("decision_intelligence_agent", run_decision_intelligence)
-workflow.add_node("aggregator",                  aggregator)
+workflow.add_node("aggregator",                 aggregator)
 
-# Graph edges: parallel fan-out → chronos → DI → aggregator → END
-workflow.set_entry_point("parallel_agents")
+workflow.set_entry_point("planner")
+workflow.add_edge("planner",                     "parallel_agents")
 workflow.add_edge("parallel_agents",             "chronos")
 workflow.add_edge("chronos",                     "decision_intelligence_agent")
 workflow.add_edge("decision_intelligence_agent", "aggregator")

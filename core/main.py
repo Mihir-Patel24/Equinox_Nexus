@@ -1,14 +1,20 @@
 """
-Equinox Nexus — FastAPI Core Server v3.0
+Equinox Nexus — FastAPI Core Server v3.2
 
 Endpoints:
-  POST /simulate           — Full agentic simulation (RAG + XAI + Twin + Monte Carlo)
-  GET  /twin/{twin_id}     — Retrieve Financial Twin state + history
-  GET  /twins              — List all active Financial Twins
-  POST /payroll/analyze    — Enterprise payroll anomaly detection
-  GET  /monitor/status     — Continuous monitoring status + latest FX rates
-  GET  /health             — Health check
-  GET  /                   — API metadata
+  POST /simulate                     — Full agentic simulation (RAG + XAI + Twin + Monte Carlo)
+  GET  /twin/{twin_id}               — Retrieve Financial Twin state + history
+  GET  /twin/{twin_id}/drift-report  — Drift explanation + viability trend (autonomous loop)
+  POST /twin/{twin_id}/resimulate    — Manually trigger re-simulation for a twin
+  POST /twin/{twin_id}/inject-drift  — [TEST] Inject a mock FX drift alert to validate loop
+  GET  /twins                        — List all active Financial Twins
+  POST /payroll/analyze              — Enterprise payroll anomaly detection
+  GET  /monitor/status               — Continuous monitoring status + latest FX rates
+  POST /admin/refresh-fx             — Fetch live ECB rates and recalibrate GBM parameters
+  POST /evaluate/simulation          — Evaluate quality of any simulation result dict
+  GET  /evaluate/{twin_id}           — Evaluate latest stored simulation for a twin
+  GET  /health                       — Health check
+  GET  /                             — API metadata
 """
 
 import asyncio
@@ -55,7 +61,25 @@ async def lifespan(app: FastAPI):
             print(f"Research Agent startup error (non-fatal): {e}")
 
     research_task = asyncio.create_task(_run_research_startup())
-    print("Equinox Nexus v3.1: Research Agent launched (background).")
+    print("Equinox Nexus v3.2: Research Agent launched (background).")
+
+    # 3. Non-blocking FX live calibration (fetches ECB rates, refreshes fx_volatility.pkl)
+    async def _run_fx_calibration():
+        try:
+            loop = asyncio.get_event_loop()
+            await loop.run_in_executor(None, _fx_calibrate_sync)
+        except Exception as e:
+            print(f"FX Calibration startup error (non-fatal): {e}")
+
+    def _fx_calibrate_sync():
+        try:
+            from models.update_fx_live import run_live_calibration
+            run_live_calibration()
+        except Exception as e:
+            print(f"FX Calibrator (non-fatal): {e}")
+
+    fx_task = asyncio.create_task(_run_fx_calibration())
+    print("Equinox Nexus v3.2: FX live calibration launched (background).")
 
     try:
         yield
@@ -63,11 +87,12 @@ async def lifespan(app: FastAPI):
         monitor.stop()
         task.cancel()
         research_task.cancel()
+        fx_task.cancel()
         try:
             await task
         except asyncio.CancelledError:
             pass
-        print("Equinox Nexus: Monitor + Research Agent stopped cleanly.")
+        print("Equinox Nexus: Monitor + Research Agent + FX Calibrator stopped cleanly.")
 
 
 # ── FastAPI app ────────────────────────────────────────────────────────────────
@@ -229,10 +254,8 @@ async def simulate_relocation(request: SimulationRequest):
         raise HTTPException(status_code=500, detail=f"Agent pipeline error: {e}")
 
     # ── 4. Capture FX snapshot BEFORE updating twin ───────────────────
-    # This is the fix for the broken drift detection: we capture live rates
-    # at the moment of simulation so detect_drift() can compare later.
     monitor = get_monitor()
-    current_fx = monitor.get_latest_fx()  # {} if monitor hasn't polled yet
+    current_fx = monitor.get_latest_fx()
 
     # ── 5. Update Financial Twin with result + FX snapshot ────────────
     update_twin(twin.twin_id, result, request.target_city, fx_snapshot=current_fx)
@@ -240,7 +263,7 @@ async def simulate_relocation(request: SimulationRequest):
     # ── 6. Build twin drift alerts (compare vs previous simulations) ──
     drift_alerts = twin.detect_drift(current_fx=current_fx if current_fx else None)
 
-    # ── 6. Compose API response ───────────────────────────────────────
+    # ── 7. Compose API response ───────────────────────────────────────
     final_report = result.get("final_report") or {}
     xai = result.get("xai_explanation") or {}
     di_result = result.get("decision_intelligence") or {}
@@ -255,17 +278,23 @@ async def simulate_relocation(request: SimulationRequest):
             "total_simulations": len(twin.simulation_history),
             "best_city_so_far": twin.get_best_city(),
             "drift_alerts": drift_alerts,
-            "fx_snapshot_captured": bool(current_fx),  # tells client if monitoring is live
         },
 
         # ── Core Data ───────────────────────────────────────────────
         "data": {
+            "twin_id": twin.twin_id,
+            "fx_snapshot_captured": bool(current_fx),
             "final_report": final_report,
             "wealth_projection": result.get("wealth_projection"),
             "monte_carlo_result": result.get("monte_carlo_result"),
             "risk_analysis": result.get("risk_analysis"),
             "expense_analysis": result.get("expense_analysis"),
             "compliance_analysis": result.get("compliance_analysis"),
+            "decision_intelligence": {
+                "llm_viability_score": di_result.get("decision_viability_score"),
+                "llm_reasoning": di_result.get("dynamic_reasoning", ""),
+                "model_used": "Groq llama-3.3-70b-versatile" if di_result.get("decision_viability_score") else "fallback (no LLM)",
+            },
         },
 
         # ── XAI — Explainable AI ────────────────────────────────────
@@ -279,14 +308,6 @@ async def simulate_relocation(request: SimulationRequest):
             "methodology": xai.get("methodology", {}),
         },
 
-        # ── Decision Intelligence (LLM Synthesis) ───────────────────
-        # The raw Groq LLM output — score + natural-language rationale
-        # This is separate from XAI so the frontend can display both.
-        "decision_intelligence": {
-            "llm_viability_score": di_result.get("decision_viability_score"),
-            "llm_reasoning": di_result.get("dynamic_reasoning", ""),
-            "model_used": "Groq llama-3.3-70b-versatile" if di_result.get("decision_viability_score") else "fallback (no LLM)",
-        },
 
         # ── RAG Compliance Intelligence ──────────────────────────────
         "compliance_intelligence": {
@@ -322,9 +343,14 @@ async def get_financial_twin(twin_id: str):
     current_fx = monitor.get_latest_fx()
     drift_alerts = twin.detect_drift(current_fx=current_fx if current_fx else None)
 
+    twin_dict = twin.to_dict()
     return {
         "status": "success",
-        "twin": twin.to_dict(),
+        # Hoist twin_id and profile to top level so consumers can access without nesting
+        "twin_id": twin.twin_id,
+        "profile": twin_dict.get("user_profile", {}),
+        # Full twin detail
+        "twin": twin_dict,
         "drift_alerts": drift_alerts,
         "monitor_status": monitor.get_status(),
     }
@@ -332,13 +358,178 @@ async def get_financial_twin(twin_id: str):
 
 @app.get("/twins")
 async def list_all_twins():
-    """List all active Financial Twins (summaries only)."""
+    """List all active Financial Twins (summaries only). Returns a direct list."""
+    return list_twins()
+
+
+# ── Autonomous Twin Loop Endpoints ─────────────────────────────────────────────
+
+@app.get("/twin/{twin_id}/drift-report")
+async def get_drift_report(twin_id: str):
+    """
+    Return the drift history and latest auto-resimulation explanation for a twin.
+
+    This is the primary read surface for the autonomous Financial Twin loop.
+    The frontend polls this endpoint to show:
+      - Whether the twin has been auto-updated
+      - What changed (viability delta, savings delta, FX triggers)
+      - The AI-generated narrative and recommendation
+      - The viability score trend across all simulations
+    """
+    twin = get_twin(twin_id)
+    if not twin:
+        raise HTTPException(status_code=404, detail=f"Twin '{twin_id}' not found.")
+
+    # ── Viability trend across all simulations ────────────────────────────────
+    viability_trend = [
+        {
+            "simulation_id":  r.simulation_id,
+            "target_city":    r.target_city,
+            "timestamp":      r.timestamp.isoformat(),
+            "viability_score": r.viability_score,
+            "net_annual_savings": r.net_annual_savings,
+            "effective_tax_rate": r.effective_tax_rate,
+            "col_multiplier":     r.col_multiplier,
+        }
+        for r in twin.simulation_history
+    ]
+
+    # ── Extract auto-resimulation alerts ─────────────────────────────────────
+    resim_alerts = [
+        a for a in twin.alerts
+        if a.get("type") == "auto_resimulation"
+    ]
+
+    latest_drift_explanation = None
+    if resim_alerts:
+        latest_resim = resim_alerts[-1]
+        latest_drift_explanation = latest_resim.get("drift_explanation")
+
+    # ── Latest FX drift alerts ────────────────────────────────────────────────
+    monitor = get_monitor()
+    current_fx = monitor.get_latest_fx()
+    live_drift_alerts = twin.detect_drift(current_fx=current_fx if current_fx else None)
+
     return {
-        "status": "success",
-        "count": len(list_twins()),
-        "twins": list_twins(),
+        "status":      "success",
+        "twin_id":     twin_id,
+        "total_simulations":    len(twin.simulation_history),
+        "auto_resimulations":   len(resim_alerts),
+        "viability_trend":      viability_trend,
+        "latest_drift_explanation": latest_drift_explanation,
+        "live_drift_alerts":    live_drift_alerts,
+        "all_alerts":           twin.alerts[-20:],   # last 20 alerts
+        "monitor_status":       monitor.get_status(),
     }
 
+
+@app.post("/twin/{twin_id}/resimulate")
+async def manual_resimulate(twin_id: str, background_tasks: BackgroundTasks):
+    """
+    Manually trigger an autonomous re-simulation for a specific twin.
+
+    Unlike /simulate (which requires user input), this endpoint re-runs
+    the agent pipeline using the twin's saved profile and last-simulated city.
+    Useful when the user wants to force a refresh without waiting for the
+    monitor's 30-minute polling cycle.
+    """
+    twin = get_twin(twin_id)
+    if not twin:
+        raise HTTPException(status_code=404, detail=f"Twin '{twin_id}' not found.")
+
+    if not twin.simulation_history:
+        raise HTTPException(
+            status_code=400,
+            detail="Twin has no simulation history. Run /simulate first."
+        )
+
+    from agents.auto_resim import AutoResimEngine
+    engine = AutoResimEngine()
+
+    monitor   = get_monitor()
+    current_fx = monitor.get_latest_fx()
+
+    # Build a synthetic high-severity drift alert to force re-sim
+    synthetic_alerts = [{
+        "type":     "manual_trigger",
+        "severity": "high",
+        "city":     twin.simulation_history[-1].target_city,
+        "message":  "Manually triggered via POST /twin/{twin_id}/resimulate",
+    }]
+
+    def _run():
+        engine.resimulate_and_update(twin, synthetic_alerts, current_fx)
+
+    background_tasks.add_task(_run)
+
+    return {
+        "status":  "accepted",
+        "twin_id": twin_id,
+        "city":    twin.simulation_history[-1].target_city,
+        "message": (
+            f"Re-simulation started in background for twin {twin_id}. "
+            f"Poll GET /twin/{twin_id}/drift-report to see the updated result."
+        ),
+    }
+
+
+@app.post("/twin/{twin_id}/inject-drift")
+async def inject_test_drift(twin_id: str):
+    """
+    [TEST / DEVELOPMENT ONLY]
+    Inject a synthetic high-severity FX drift alert into a twin and
+    immediately trigger the autonomous re-simulation engine.
+
+    This validates the closed loop without waiting 30 minutes for the
+    FX monitor cycle. Do not expose this endpoint in production.
+    """
+    twin = get_twin(twin_id)
+    if not twin:
+        raise HTTPException(status_code=404, detail=f"Twin '{twin_id}' not found.")
+
+    if not twin.simulation_history:
+        raise HTTPException(
+            status_code=400,
+            detail="Twin has no simulation history. Run /simulate first."
+        )
+
+    # Synthetic 10% SGD drift alert — triggers all gates
+    synthetic_drift = [{
+        "type":      "fx_drift",
+        "severity":  "high",
+        "currency":  "SGD",
+        "city":      twin.simulation_history[-1].target_city,
+        "old_rate":  1.35,
+        "new_rate":  1.485,
+        "drift_pct": 10.0,
+        "direction": "weakened",
+        "message": "[TEST] SGD weakened 10.0% vs USD — synthetic drift injection",
+        "recommendation": "[TEST] Re-simulate to validate autonomous loop.",
+    }]
+
+    monitor    = get_monitor()
+    current_fx = monitor.get_latest_fx() or {"SGD": 1.485, "EUR": 0.92, "GBP": 0.79}
+
+    from agents.auto_resim import AutoResimEngine
+    import threading
+    engine = AutoResimEngine()
+    t = threading.Thread(
+        target=engine.resimulate_and_update,
+        args=(twin, synthetic_drift, current_fx),
+        daemon=True,
+    )
+    t.start()
+
+    return {
+        "status":         "drift_injected",
+        "twin_id":        twin_id,
+        "synthetic_alert": synthetic_drift[0],
+        "message": (
+            f"Synthetic 10% SGD drift injected for twin {twin_id}. "
+            f"Re-simulation running in background. "
+            f"Poll GET /twin/{twin_id}/drift-report to see result."
+        ),
+    }
 
 # ── Monitoring Endpoint ────────────────────────────────────────────────────────
 
@@ -456,3 +647,143 @@ async def research_status():
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error reading research status: {e}")
+
+
+# ── FX Live Calibration Endpoint ───────────────────────────────────────────────
+
+@app.post("/admin/refresh-fx")
+async def refresh_fx_rates(background_tasks: BackgroundTasks):
+    """
+    POST /admin/refresh-fx
+
+    Fetches live EUR reference rates from the ECB's free public XML API and
+    recalibrates fx_volatility.pkl with:
+      - current_rate_vs_eur  (live ECB rate)
+      - live_trend_1d        (today vs stored baseline)
+      - data_as_of           (ISO UTC timestamp)
+
+    Runs asynchronously in background. Does not block the response.
+    No API key required — ECB data is free and public.
+
+    Returns:
+      - status: "calibration_started"
+      - message: instructions to check /monitor/status
+    """
+    def _run_calibration():
+        try:
+            from models.update_fx_live import run_live_calibration
+            result = run_live_calibration()
+            print(f"FX Calibration complete: {len(result)} currencies updated.")
+        except Exception as e:
+            print(f"FX Calibration error: {e}")
+
+    background_tasks.add_task(_run_calibration)
+
+    return {
+        "status": "calibration_started",
+        "message": (
+            "FX live calibration is running in background. "
+            "ECB eurofxref-daily.xml is being fetched. "
+            "fx_volatility.pkl will be updated with live rates in ~5 seconds. "
+            "Check /monitor/status for updated FX data after calibration completes."
+        ),
+        "data_source": "European Central Bank — eurofxref-daily.xml (free, no auth)",
+    }
+
+
+# ── Evaluation Endpoints ────────────────────────────────────────────────────────
+
+class EvaluationRequest(BaseModel):
+    simulation_result: Dict[str, Any]
+
+
+@app.post("/evaluate/simulation")
+async def evaluate_simulation(request: EvaluationRequest):
+    """
+    POST /evaluate/simulation
+
+    Evaluate the quality of any simulation result dict.
+    Returns structured RAG faithfulness, XAI coverage, agent completeness,
+    and an overall weighted quality score (0-100) with letter grade.
+
+    Body: { "simulation_result": { ...full LangGraph state dict... } }
+    """
+    try:
+        from evaluation.evaluator import SimulationEvaluator
+        ev     = SimulationEvaluator()
+        report = ev.evaluate(request.simulation_result)
+        return {
+            "status":  "evaluated",
+            "report":  report,
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Evaluation failed: {e}")
+
+
+@app.get("/evaluate/{twin_id}")
+async def evaluate_twin(twin_id: str):
+    """
+    GET /evaluate/{twin_id}
+
+    Evaluate the most recent simulation stored in the Financial Twin's history.
+    Retrieves the twin, extracts the latest SimulationRecord raw state, and
+    runs the full evaluation pipeline on it.
+
+    Returns:
+      - twin_id, target_city, overall_score, grade, label
+      - rag metrics (faithfulness, freshness, topic coverage)
+      - xai metrics (factor coverage, CI quality, narrative)
+      - agent completeness
+      - actionable recommendations
+    """
+    twin = get_twin(twin_id)
+    if not twin:
+        raise HTTPException(status_code=404, detail=f"Twin '{twin_id}' not found.")
+
+    # Get the latest raw simulation state from history
+    history = getattr(twin, "history", [])
+    if not history:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Twin '{twin_id}' exists but has no simulation history to evaluate."
+        )
+
+    # Use the most recent record's raw_state if available, else build a proxy
+    latest = history[-1]
+    raw_state = getattr(latest, "raw_state", None)
+
+    if not raw_state:
+        # Build a minimal evaluatable proxy from twin record fields
+        raw_state = {
+            "target_city":        twin.target_city,
+            "twin_id":            twin_id,
+            "compliance_analysis": {
+                "compliance_claims": [],
+                "evidence_gaps":     [{"topic": t, "severity": "warning"} for t in ["income_tax", "visa", "social_security", "dta"]],
+                "evidence_quality":  "no_evidence",
+                "claim_count":       0,
+            },
+            "xai_explanation": {
+                "viability_score":     latest.viability_score,
+                "factor_contributions": [],
+                "confidence_interval": [],
+                "executive_summary":   "",
+            },
+            "final_report": {
+                "relocation_viability_score": latest.viability_score,
+                "net_annual_savings":         latest.net_annual_savings,
+            },
+            "monte_carlo_result": {},
+        }
+
+    try:
+        from evaluation.evaluator import SimulationEvaluator
+        ev     = SimulationEvaluator()
+        report = ev.evaluate(raw_state)
+        return {
+            "twin_id":    twin_id,
+            "status":     "evaluated",
+            "report":     report,
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Evaluation failed: {e}")

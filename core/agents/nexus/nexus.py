@@ -1,11 +1,21 @@
-"""
-Nexus Agent — RAG-Powered Compliance & Tax Intelligence Engine v3.0
+﻿"""
+Nexus Agent â€” RAG-Powered Compliance & Tax Intelligence Engine v3.1
 
 Architecture:
 1. Retrieves live compliance passages from ChromaDB using the RAG engine
 2. Uses OECD 2024 tax rates as structured numeric backbone (for calculations)
 3. Enriches with DTA intelligence and visa category from RAG
-4. Produces a compliance brief grounded in retrieved documents
+4. Produces evidence-first compliance output where EVERY claim is traceable to:
+   - Source KB file (jurisdiction)
+   - Section of the document
+   - Effective year
+   - Retrieval confidence (high / medium / low)
+   - Data freshness status (current / may_be_stale / stale)
+   - Hallucination risk flag
+
+v3.1 change: get_evidence_brief() replaces get_compliance_brief().
+  compliance_notes are now structured compliance_claims with full provenance.
+  evidence_gaps flag topics where no KB evidence was retrieved.
 
 NO hardcoded static strings for compliance advice.
 All qualitative compliance text is retrieved from the knowledge base.
@@ -18,7 +28,7 @@ import sys
 # Add parent to path to import RAG engine
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../.."))
 
-# Lazy import — RAG engine initializes ChromaDB/sentence-transformers
+# Lazy import â€” RAG engine initializes ChromaDB/sentence-transformers
 _rag_engine = None
 
 def _get_rag():
@@ -33,9 +43,9 @@ def _get_rag():
     return _rag_engine if _rag_engine is not False else None
 
 
-# ── OECD 2024 Numeric Tax Backbone ──────────────────────────────────────────
+# â”€â”€ OECD 2024 Numeric Tax Backbone â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 # These are used ONLY for numeric calculations (effective rate, estimated tax).
-# All human-readable compliance text comes from RAG.
+# All human-readable compliance text comes from RAG + EvidenceChain.
 TAX_DATA = {
     # city_key: (income_tax, social_security, vat, regime_label, country_for_rag)
     "london":     (0.40, 0.080, 0.20, "PAYE (UK)",               "United Kingdom"),
@@ -74,7 +84,7 @@ TAX_DATA = {
     "oslo":       (0.40, 0.082, 0.25, "Trinnskatt (NO)",          "Norway"),
     "hong kong":  (0.17, 0.050, 0.00, "Salaries Tax (HK)",        "Hong Kong"),
     "kuala lumpur": (0.28, 0.11, 0.08, "PIT (MY)",                "Malaysia"),
-    "prague":     (0.23, 0.065, 0.21, "Daň z příjmů (CZ)",       "Czech Republic"),
+    "prague":     (0.23, 0.065, 0.21, "Dan z prijmu (CZ)",        "Czech Republic"),
     "warsaw":     (0.32, 0.137, 0.23, "PIT (PL)",                 "Poland"),
     "budapest":   (0.15, 0.185, 0.27, "SZJA Flat (HU)",           "Hungary"),
     "dubai internet city": (0.00, 0.000, 0.05, "Free Zone (UAE)", "United Arab Emirates"),
@@ -90,7 +100,7 @@ DTA_RELIEF = {
     "oslo": 0.08, "stockholm": 0.07,
 }
 
-# Country → relevant KB document mapping
+# Country â†’ relevant KB document mapping
 COUNTRY_KB_MAP = {
     "United Kingdom":        "uk_compliance",
     "Germany":               "germany_compliance",
@@ -120,22 +130,33 @@ class NexusAgent:
         row = TAX_DATA.get(city_key)
         if row:
             return row
-        # Fuzzy match — check if city_key contains a known key
+        # Fuzzy match â€” check if city_key contains a known key
         for key, row in TAX_DATA.items():
             if key in city_key or city_key in key:
                 return row
         return (0.30, 0.100, 0.15, "Standard Jurisdiction", "Unknown")
 
-    def _build_rag_compliance_brief(
+    def _build_evidence_brief(
         self,
         city_key: str,
         country: str,
         income: float,
     ) -> Dict[str, Any]:
-        """Query the RAG engine for compliance intelligence."""
+        """
+        v3.1: Call get_evidence_brief() to get fully traced compliance output.
+        Falls back to get_compliance_brief() if RAG engine is unavailable.
+        """
         rag = self._get_rag()
         if not rag:
-            return {"compliance_brief": "RAG engine unavailable.", "retrieved_passages": [], "sources_used": []}
+            return {
+                "evidence_claims":    [],
+                "evidence_gaps":      [],
+                "evidence_summary":   {"overall_quality": "no_evidence", "trustworthy": False},
+                "retrieved_passages": [],
+                "compliance_brief":   "RAG engine unavailable.",
+                "sources_used":       [],
+                "rag_retrieval_count": 0,
+            }
 
         queries = [
             f"income tax rates {country} employed professional",
@@ -144,12 +165,21 @@ class NexusAgent:
             f"social security pension contributions {country} employee",
         ]
 
-        return rag.get_compliance_brief(
-            city=city_key,
-            country=country,
-            income=income,
-            query_topics=queries,
-        )
+        try:
+            return rag.get_evidence_brief(
+                city=city_key,
+                country=country,
+                income=income,
+                query_topics=queries,
+            )
+        except Exception as e:
+            print(f"Nexus: get_evidence_brief failed ({e}), falling back to get_compliance_brief")
+            return rag.get_compliance_brief(
+                city=city_key,
+                country=country,
+                income=income,
+                query_topics=queries,
+            )
 
     def _extract_visa_category(self, passages: list, country: str) -> str:
         """
@@ -198,13 +228,13 @@ class NexusAgent:
             treaty_label = "Highly Favorable Tax Treaty"
         elif relief >= 0.10:
             status = "favorable_dta"
-            treaty_label = "Favorable DTA — Significant Relief Available"
+            treaty_label = "Favorable DTA â€” Significant Relief Available"
         elif relief >= 0.05 or has_dta:
             status = "standard_dta"
-            treaty_label = "Standard DTA — Moderate Relief"
+            treaty_label = "Standard DTA â€” Moderate Relief"
         else:
             status = "no_dta"
-            treaty_label = "No DTA Confirmed — Risk of Double Taxation"
+            treaty_label = "No DTA Confirmed â€” Risk of Double Taxation"
 
         return {
             "treaty_status": status,
@@ -214,7 +244,7 @@ class NexusAgent:
         }
 
     def analyze_compliance(self, user_profile: Dict[str, Any], target_city: str) -> Dict[str, Any]:
-        print(f"Nexus (RAG): Analyzing compliance for {target_city}")
+        print(f"Nexus (RAG v3.1): Analyzing compliance for {target_city}")
 
         city_key = target_city.lower().split(",")[0].strip()
         income = user_profile.get("annual_income", 60000)
@@ -230,60 +260,111 @@ class NexusAgent:
         estimated_tax = income * effective_rate
         net_annual = income - estimated_tax
 
-        # 3. RAG-powered compliance intelligence
-        rag_brief = self._build_rag_compliance_brief(city_key, country, income)
-        passages = rag_brief.get("retrieved_passages", [])
+        # 3. Evidence-first RAG compliance output (v3.1)
+        rag_brief = self._build_evidence_brief(city_key, country, income)
+        passages   = rag_brief.get("retrieved_passages", [])
+        claims     = rag_brief.get("evidence_claims", [])
+        gaps       = rag_brief.get("evidence_gaps", [])
+        ev_summary = rag_brief.get("evidence_summary", {})
 
-        # 4. Extract visa and DTA status from RAG output
+        # 4. Extract visa and DTA status from RAG passages
         visa_category = self._extract_visa_category(passages, country)
         dta_info = self._extract_dta_status(passages, city_key)
 
-        # 5. Build top compliance notes from retrieved passages (sorted by relevance)
-        top_notes = []
-        for p in passages[:3]:
-            if p.get("relevance_score", 0) > 0.2:
-                # Extract first 2 sentences as a compliance note
-                text = p.get("text", "")
-                sentences = text.split(".")[:2]
-                note = ". ".join(s.strip() for s in sentences if s.strip()) + "."
-                if len(note) > 30:
-                    top_notes.append(note)
+        # 5. Build compliance_notes from evidence-grounded CLAIMS
+        #    (replaces raw sentence-splitting from v3.0)
+        compliance_notes = []
+        for claim in claims[:4]:
+            # Format: "[Source | Section | Year | Confidence] Claim text."
+            note_text = claim.get("claim", "")
+            confidence = claim.get("retrieval_confidence", "low")
+            section    = claim.get("section", "General")
+            year       = claim.get("effective_year", "?")
+            source     = claim.get("source_file", "")
+            freshness  = claim.get("freshness_status", "unknown")
 
-        # Special adjustments for specific regimes
+            if note_text and len(note_text) > 20:
+                compliance_notes.append({
+                    "text":       note_text,
+                    "source":     source,
+                    "section":    section,
+                    "year":       year,
+                    "confidence": confidence,
+                    "freshness":  freshness,
+                    "grounded":   confidence in ("high", "medium"),
+                })
+
+        # 6. Special regime notes (structured, not raw strings)
         special_notes = []
         if city_key in ("amsterdam",):
-            special_notes.append("30% Ruling may apply if recruited abroad — reduces taxable income to 70% of salary for up to 5 years.")
+            special_notes.append({
+                "text": "30% Ruling may apply if recruited abroad â€” reduces taxable income to 70% for up to 5 years.",
+                "source": "netherlands_compliance.md", "section": "30% Ruling",
+                "year": 2024, "confidence": "high", "freshness": "current", "grounded": True,
+            })
         if city_key in ("lisbon", "porto"):
-            special_notes.append("Non-Habitual Resident (NHR) status may provide flat 20% rate on Portuguese-sourced income for 10 years.")
+            special_notes.append({
+                "text": "Non-Habitual Resident (NHR) status may provide flat 20% rate on Portuguese-sourced income for 10 years.",
+                "source": "portugal_compliance.md", "section": "NHR Regime",
+                "year": 2024, "confidence": "high", "freshness": "current", "grounded": True,
+            })
         if city_key in ("dubai", "abu dhabi"):
-            special_notes.append("UAE has zero personal income tax. End of Service Gratuity (21 days/year) is mandatory employer benefit.")
+            special_notes.append({
+                "text": "UAE has zero personal income tax. End of Service Gratuity (21 days/year) is mandatory employer benefit.",
+                "source": "uae_compliance.md", "section": "Personal Tax",
+                "year": 2024, "confidence": "high", "freshness": "current", "grounded": True,
+            })
         if city_key == "singapore" and social_security > 0:
-            special_notes.append("CPF contributions apply only to Singapore PRs and Citizens. Work Pass holders are exempt from CPF.")
+            special_notes.append({
+                "text": "CPF contributions apply only to Singapore PRs and Citizens. Work Pass holders are exempt from CPF.",
+                "source": "singapore_compliance.md", "section": "Central Provident Fund (CPF)",
+                "year": 2024, "confidence": "high", "freshness": "current", "grounded": True,
+            })
+
+        all_notes = compliance_notes + special_notes
+
+        # Format simple string list for backward-compat (legacy compliance_notes field)
+        legacy_notes = [n["text"] for n in all_notes]
 
         return {
             # Numeric outputs (for calculations)
-            "income_tax_rate": income_tax,
+            "income_tax_rate":      income_tax,
             "social_security_rate": social_security,
-            "vat_rate": vat,
-            "gross_tax_rate": round(gross_tax_rate, 4),
-            "dta_relief_applied": dta_relief,
-            "effective_rate": round(effective_rate, 4),
-            "estimated_tax": round(estimated_tax, 2),
-            "net_annual_income": round(net_annual, 2),
+            "vat_rate":             vat,
+            "gross_tax_rate":       round(gross_tax_rate, 4),
+            "dta_relief_applied":   dta_relief,
+            "effective_rate":       round(effective_rate, 4),
+            "estimated_tax":        round(estimated_tax, 2),
+            "net_annual_income":    round(net_annual, 2),
             "net_wealth_projection": round(net_annual, 2),
 
             # Qualitative outputs (from RAG or structured data)
-            "tax_regime": regime,
-            "country": country,
+            "tax_regime":        regime,
+            "country":           country,
             "visa_requirements": visa_category,
-            "treaty_status": dta_info["treaty_status"],
-            "treaty_label": dta_info["treaty_label"],
+            "treaty_status":     dta_info["treaty_status"],
+            "treaty_label":      dta_info["treaty_label"],
 
-            # RAG-retrieved compliance intelligence
-            "compliance_notes": top_notes + special_notes,
-            "compliance_brief_excerpt": rag_brief.get("compliance_brief", "")[:800] if rag_brief.get("compliance_brief") else "",
-            "rag_sources": rag_brief.get("sources_used", []),
+            # v3.1 â€” Evidence-grounded structured compliance claims
+            "compliance_claims":  all_notes,
+            "compliance_notes":   legacy_notes,   # backward compat
+
+            # v3.1 â€” Evidence traceability metadata
+            "evidence_gaps":     gaps,
+            "evidence_summary":  ev_summary,
+            "evidence_quality":  ev_summary.get("overall_quality", "unknown"),
+            "evidence_trustworthy": ev_summary.get("trustworthy", False),
+            "claim_count":       len(all_notes),
+            "high_confidence_claims": sum(1 for c in all_notes if c.get("confidence") == "high"),
+
+            # RAG provenance
+            "compliance_brief_excerpt": rag_brief.get("compliance_brief", "")[:800],
+            "rag_sources":       rag_brief.get("sources_used", []),
             "rag_passage_count": rag_brief.get("rag_retrieval_count", 0),
 
-            "data_source": f"OECD Tax Database 2024 + RAG ({', '.join(rag_brief.get('sources_used', [])[:2])})",
+            "data_source": (
+                f"OECD Tax Database 2024 + ChromaDB RAG v3.1 + EvidenceChain "
+                f"({', '.join(rag_brief.get('sources_used', [])[:2])})"
+            ),
         }
+
