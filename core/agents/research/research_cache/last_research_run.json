@@ -1,7 +1,6 @@
 {
-  "timestamp": "2026-07-25T16:47:33.382531",
+  "timestamp": "2026-09-01T10:03:44.720044",
   "countries_updated": [
-    "Singapore",
     "United Kingdom",
     "Germany",
     "Singapore",
@@ -19,9 +18,6 @@
     "South Korea",
     "Thailand"
   ],
-  "api_calls_made": 119,
-  "errors": [
-    "RAG rebuild failed: cannot schedule new futures after interpreter shutdown",
-    "RAG rebuild failed: cannot schedule new futures after interpreter shutdown"
-  ]
+  "api_calls_made": 112,
+  "errors": []
 }
