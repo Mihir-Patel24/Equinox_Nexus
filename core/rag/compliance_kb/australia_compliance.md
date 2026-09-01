@@ -68,12 +68,13 @@ Standard rate: 10% (no reduced rates; food, healthcare, education zero-rated)
 - Housing affordability is a major challenge in Sydney/Melbourne
 
 ## Live Macroeconomic Intelligence
-*Last updated by Research Agent: 2026-07-25 16:29 UTC*
+*Last updated by Research Agent: 2026-09-01 09:54 UTC*
 *Data sources: World Bank API, OECD.Stat, IMF World Economic Outlook*
 
 - **CPI Inflation (2025):** 2.87% — sourced from World Bank
 - **GDP Growth (2025):** 1.35% — sourced from World Bank
 - **Unemployment Rate (2025):** 4.09% — sourced from World Bank
+- **Tax Revenue (% of GDP, 2022):** 23.56% — sourced from World Bank
 - **Fiscal Balance (2022):** -1.35% of GDP (deficit) — World Bank
 
 ### Relocation Context

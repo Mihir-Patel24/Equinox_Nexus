@@ -71,7 +71,7 @@ Singapore is one of Asia's most expensive cities:
 - World-class healthcare — government polyclinics subsidized; private hospitals are premium-priced
 
 ## Live Macroeconomic Intelligence
-*Last updated by Research Agent: 2026-07-25 16:22 UTC*
+*Last updated by Research Agent: 2026-09-01 09:51 UTC*
 *Data sources: World Bank API, OECD.Stat, IMF World Economic Outlook*
 
 - **CPI Inflation (2025):** 0.9% — sourced from World Bank

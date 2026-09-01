@@ -64,7 +64,7 @@ Sweden-India DTA (1997):
 - High quality of life, excellent public services, but significant taxes
 
 ## Live Macroeconomic Intelligence
-*Last updated by Research Agent: 2026-07-25 16:45 UTC*
+*Last updated by Research Agent: 2026-09-01 10:00 UTC*
 *Data sources: World Bank API, OECD.Stat, IMF World Economic Outlook*
 
 - **CPI Inflation (2025):** 0.68% — sourced from World Bank

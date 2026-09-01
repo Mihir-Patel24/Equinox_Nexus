@@ -69,12 +69,13 @@ NRIs can invest via:
 - Excellent value for highly skilled professionals; strong tech ecosystem in Bengaluru, Hyderabad, Pune
 
 ## Live Macroeconomic Intelligence
-*Last updated by Research Agent: 2026-07-25 16:31 UTC*
+*Last updated by Research Agent: 2026-09-01 09:54 UTC*
 *Data sources: World Bank API, OECD.Stat, IMF World Economic Outlook*
 
 - **CPI Inflation (2025):** 2.4% — sourced from World Bank
 - **GDP Growth (2025):** 7.57% — sourced from World Bank
 - **Unemployment Rate (2025):** 4.22% — sourced from World Bank
+- **Tax Revenue (% of GDP, 2022):** 6.93% — sourced from World Bank
 - **Fiscal Balance (2022):** -5.26% of GDP (deficit) — World Bank
 
 ### Relocation Context

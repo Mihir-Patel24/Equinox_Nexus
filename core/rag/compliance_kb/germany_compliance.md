@@ -68,11 +68,14 @@ Germany's statutory pension (Deutsche Rentenversicherung) requires 5 years of co
 - Monthly BVG pass (Berlin): €86/month (Deutschlandticket: €49/month for all German transit)
 
 ## Live Macroeconomic Intelligence
-*Last updated by Research Agent: 2026-07-25 16:21 UTC*
+*Last updated by Research Agent: 2026-09-01 09:50 UTC*
 *Data sources: World Bank API, OECD.Stat, IMF World Economic Outlook*
 
 - **CPI Inflation (2025):** 2.17% — sourced from World Bank
+- **GDP Growth (2025):** 0.24% — sourced from World Bank
 - **Unemployment Rate (2025):** 3.71% — sourced from World Bank
+- **Tax Revenue (% of GDP, 2024):** 10.89% — sourced from World Bank
+- **Fiscal Balance (2024):** -1.68% of GDP (deficit) — World Bank
 
 ### Relocation Context
 - **Currency:** EUR

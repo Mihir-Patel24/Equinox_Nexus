@@ -103,12 +103,14 @@ Foreign nationals who work in the US and pay FICA taxes may be eligible for Soci
 Employer-sponsored defined contribution plan. 2024 contribution limit: $23,000 ($30,500 if 50+). Many employers match contributions (commonly 50% of first 6% of salary = 3% of salary free match). Pre-tax or Roth (post-tax) options.
 
 ## Live Macroeconomic Intelligence
-*Last updated by Research Agent: 2026-07-25 16:26 UTC*
+*Last updated by Research Agent: 2026-09-01 09:52 UTC*
 *Data sources: World Bank API, OECD.Stat, IMF World Economic Outlook*
 
 - **CPI Inflation (2024):** 2.95% — sourced from World Bank
 - **GDP Growth (2025):** 2.16% — sourced from World Bank
 - **Unemployment Rate (2025):** 4.2% — sourced from World Bank
+- **Tax Revenue (% of GDP, 2024):** 10.77% — sourced from World Bank
+- **Fiscal Balance (2024):** -7.19% of GDP (deficit) — World Bank
 
 ### Relocation Context
 - **Currency:** USD

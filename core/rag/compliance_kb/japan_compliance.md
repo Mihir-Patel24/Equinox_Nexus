@@ -75,7 +75,7 @@ Available in select municipalities. Allows setting up business without immediate
 - Strong food culture; eating out can be affordable (JPY 500–1,500 for full meals)
 
 ## Live Macroeconomic Intelligence
-*Last updated by Research Agent: 2026-07-25 16:28 UTC*
+*Last updated by Research Agent: 2026-09-01 09:53 UTC*
 *Data sources: World Bank API, OECD.Stat, IMF World Economic Outlook*
 
 - **CPI Inflation (2025):** 3.17% — sourced from World Bank

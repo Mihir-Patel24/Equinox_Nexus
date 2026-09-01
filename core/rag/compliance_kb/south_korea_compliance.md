@@ -67,7 +67,7 @@ Zero-rated: exports, international transport
 - Medical costs very low compared to US/UK due to universal health insurance
 
 ## Live Macroeconomic Intelligence
-*Last updated by Research Agent: 2026-07-25 16:46 UTC*
+*Last updated by Research Agent: 2026-09-01 10:01 UTC*
 *Data sources: World Bank API, OECD.Stat, IMF World Economic Outlook*
 
 - **CPI Inflation (2025):** 2.12% — sourced from World Bank

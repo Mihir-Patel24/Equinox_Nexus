@@ -72,10 +72,12 @@ Portugal-India DTA (1998):
 - Monthly Metro pass (Lisbon): €40–€50
 
 ## Live Macroeconomic Intelligence
-*Last updated by Research Agent: 2026-07-25 16:40 UTC*
+*Last updated by Research Agent: 2026-09-01 09:57 UTC*
 *Data sources: World Bank API, OECD.Stat, IMF World Economic Outlook*
 
 - **CPI Inflation (2025):** 2.34% — sourced from World Bank
+- **GDP Growth (2025):** 1.86% — sourced from World Bank
+- **Unemployment Rate (2025):** 6.16% — sourced from World Bank
 - **Tax Revenue (% of GDP, 2024):** 22.35% — sourced from World Bank
 - **Fiscal Balance (2024):** 0.41% of GDP (surplus) — World Bank
 

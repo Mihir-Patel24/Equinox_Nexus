@@ -86,7 +86,7 @@ Paris is among the most expensive cities in Europe:
 - Monthly transport pass (Navigo, Paris): €86.40/month
 
 ## Live Macroeconomic Intelligence
-*Last updated by Research Agent: 2026-07-25 16:41 UTC*
+*Last updated by Research Agent: 2026-09-01 09:58 UTC*
 *Data sources: World Bank API, OECD.Stat, IMF World Economic Outlook*
 
 - **CPI Inflation (2025):** 0.94% — sourced from World Bank

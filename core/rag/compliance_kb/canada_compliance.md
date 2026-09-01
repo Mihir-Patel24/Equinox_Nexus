@@ -71,12 +71,13 @@ Canada has universal healthcare (Medicare) funded by taxes. Provinces administer
 - Monthly transit pass (Toronto TTC): CAD 156/month
 
 ## Live Macroeconomic Intelligence
-*Last updated by Research Agent: 2026-07-25 16:36 UTC*
+*Last updated by Research Agent: 2026-09-01 09:56 UTC*
 *Data sources: World Bank API, OECD.Stat, IMF World Economic Outlook*
 
 - **CPI Inflation (2025):** 2.07% — sourced from World Bank
 - **GDP Growth (2025):** 1.74% — sourced from World Bank
 - **Unemployment Rate (2025):** 6.91% — sourced from World Bank
+- **Tax Revenue (% of GDP, 2024):** 13.71% — sourced from World Bank
 - **Fiscal Balance (2024):** -1.17% of GDP (deficit) — World Bank
 
 ### Relocation Context

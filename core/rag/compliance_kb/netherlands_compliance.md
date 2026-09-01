@@ -73,9 +73,14 @@ Netherlands has a mandatory private health insurance system:
 - Cycling infrastructure is world-class — many residents skip transit costs entirely
 
 ## Live Macroeconomic Intelligence
-*Last updated by Research Agent: 2026-07-25 16:35 UTC*
+*Last updated by Research Agent: 2026-09-01 09:55 UTC*
 *Data sources: World Bank API, OECD.Stat, IMF World Economic Outlook*
 
+- **CPI Inflation (2025):** 3.26% — sourced from World Bank
+- **GDP Growth (2025):** 1.78% — sourced from World Bank
+- **Unemployment Rate (2025):** 3.87% — sourced from World Bank
+- **Tax Revenue (% of GDP, 2024):** 25.28% — sourced from World Bank
+- **Fiscal Balance (2024):** -0.61% of GDP (deficit) — World Bank
 
 ### Relocation Context
 - **Currency:** EUR

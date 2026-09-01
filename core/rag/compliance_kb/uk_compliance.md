@@ -84,11 +84,14 @@ Opening a UK bank account typically requires proof of address and identity. Inte
 London is one of the most expensive cities globally. Rent for a 1-bedroom apartment in central London averages £2,200–£3,000/month (2024). Outside London, costs drop significantly (Manchester, Edinburgh, Birmingham are 30–50% cheaper).
 
 ## Live Macroeconomic Intelligence
-*Last updated by Research Agent: 2026-07-25 16:19 UTC*
+*Last updated by Research Agent: 2026-09-01 09:49 UTC*
 *Data sources: World Bank API, OECD.Stat, IMF World Economic Outlook*
 
 - **CPI Inflation (2025):** 3.88% — sourced from World Bank
 - **GDP Growth (2025):** 1.39% — sourced from World Bank
+- **Unemployment Rate (2025):** 4.75% — sourced from World Bank
+- **Tax Revenue (% of GDP, 2024):** 26.89% — sourced from World Bank
+- **Fiscal Balance (2024):** -6.86% of GDP (deficit) — World Bank
 
 ### Relocation Context
 - **Currency:** GBP

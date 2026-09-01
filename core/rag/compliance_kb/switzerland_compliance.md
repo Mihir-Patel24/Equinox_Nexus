@@ -83,13 +83,14 @@ Switzerland is the most expensive country in Europe:
 - Grocery costs approximately 50–80% higher than UK or Germany
 
 ## Live Macroeconomic Intelligence
-*Last updated by Research Agent: 2026-07-25 16:43 UTC*
+*Last updated by Research Agent: 2026-09-01 09:59 UTC*
 *Data sources: World Bank API, OECD.Stat, IMF World Economic Outlook*
 
 - **CPI Inflation (2025):** 0.15% — sourced from World Bank
 - **GDP Growth (2025):** 1.3% — sourced from World Bank
 - **Unemployment Rate (2025):** 4.87% — sourced from World Bank
 - **Tax Revenue (% of GDP, 2024):** 9.45% — sourced from World Bank
+- **Fiscal Balance (2024):** 0.49% of GDP (surplus) — World Bank
 
 ### Relocation Context
 - **Currency:** CHF

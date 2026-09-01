@@ -61,7 +61,7 @@ Standard rate: 7% (reduced from 10% — extended annually)
 - Strong expat and digital nomad community in Bangkok, Chiang Mai, Phuket
 
 ## Live Macroeconomic Intelligence
-*Last updated by Research Agent: 2026-07-25 16:47 UTC*
+*Last updated by Research Agent: 2026-09-01 10:02 UTC*
 *Data sources: World Bank API, OECD.Stat, IMF World Economic Outlook*
 
 - **CPI Inflation (2025):** -0.13% — sourced from World Bank

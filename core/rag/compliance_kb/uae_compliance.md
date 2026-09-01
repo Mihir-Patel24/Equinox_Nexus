@@ -80,12 +80,14 @@ This is legally mandated and tax-free. Capped at 2 years of base salary.
 - Healthcare: private insurance mandatory; employer usually provides
 
 ## Live Macroeconomic Intelligence
-*Last updated by Research Agent: 2026-07-25 16:24 UTC*
+*Last updated by Research Agent: 2026-09-01 09:52 UTC*
 *Data sources: World Bank API, OECD.Stat, IMF World Economic Outlook*
 
 - **CPI Inflation (2025):** 1.25% — sourced from World Bank
 - **GDP Growth (2024):** 3.99% — sourced from World Bank
 - **Unemployment Rate (2025):** 2.17% — sourced from World Bank
+- **Tax Revenue (% of GDP, 2024):** 0.65% — sourced from World Bank
+- **Fiscal Balance (2024):** 0.39% of GDP (surplus) — World Bank
 
 ### Relocation Context
 - **Currency:** AED
