@@ -1,25 +1,28 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { MapPin, TrendingUp, Shield, DollarSign, X, Plane, Users, Play } from 'lucide-react';
 import dynamic from 'next/dynamic';
 
-// Dynamically import the map component to avoid SSR issues
+// Dynamically import the map component to avoid SSR issues with Leaflet
 const MapComponent = dynamic(() => import('./MapComponent'), {
   ssr: false,
   loading: () => (
     <div style={{
       width: '100%',
       height: '500px',
-      background: 'linear-gradient(135deg, rgba(102, 126, 234, 0.1) 0%, rgba(118, 75, 162, 0.05) 100%)',
+      background: 'radial-gradient(ellipse at 50% 60%, rgba(102,126,234,0.12) 0%, rgba(8,8,20,0.95) 70%)',
       borderRadius: '24px',
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'center',
+      flexDirection: 'column',
+      gap: '12px',
       color: 'rgba(255,255,255,0.5)'
     }}>
-      Loading map...
+      <div style={{ fontSize: '32px', animation: 'spin 1.5s linear infinite' }}>🌍</div>
+      <span style={{ fontSize: '14px' }}>Loading map...</span>
     </div>
   )
 });
@@ -70,7 +73,7 @@ export function InteractiveGlobe({ onRunAnalysis }: InteractiveGlobeProps) {
         overflow: 'hidden',
         position: 'relative'
       }}>
-        <MapComponent 
+        <MapComponent
           cities={cities}
           selectedCity={selectedCity}
           onCitySelect={setSelectedCity}

@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef } from 'react';
+import { useEffect } from 'react';
 import { MapContainer, TileLayer, Marker, Popup, useMap, Polyline } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
@@ -31,7 +31,7 @@ interface MapComponentProps {
 const createCustomIcon = (color: string, isSelected: boolean, isHovered: boolean) => {
   const size = isSelected ? 24 : isHovered ? 20 : 16;
   const pulseSize = size + 20;
-  
+
   return L.divIcon({
     className: 'custom-marker',
     html: `
@@ -66,16 +66,16 @@ const createCustomIcon = (color: string, isSelected: boolean, isHovered: boolean
 
 // Connection lines between cities
 const connections = [
-  ['1', '5'], // Singapore - Tokyo
-  ['1', '8'], // Singapore - Sydney
-  ['2', '7'], // Dubai - London
-  ['3', '4'], // Lisbon - Berlin
-  ['4', '9'], // Berlin - Amsterdam
+  ['1', '5'],  // Singapore - Tokyo
+  ['1', '8'],  // Singapore - Sydney
+  ['2', '7'],  // Dubai - London
+  ['3', '4'],  // Lisbon - Berlin
+  ['4', '9'],  // Berlin - Amsterdam
   ['6', '10'], // Austin - Toronto
-  ['7', '9'], // London - Amsterdam
+  ['7', '9'],  // London - Amsterdam
   ['5', '10'], // Tokyo - Toronto
-  ['2', '1'], // Dubai - Singapore
-  ['8', '5'], // Sydney - Tokyo
+  ['2', '1'],  // Dubai - Singapore
+  ['8', '5'],  // Sydney - Tokyo
 ];
 
 function MapContent({ cities, selectedCity, onCitySelect, hoveredCity, onCityHover }: MapComponentProps) {
@@ -87,17 +87,16 @@ function MapContent({ cities, selectedCity, onCitySelect, hoveredCity, onCityHov
     }
   }, [selectedCity, map]);
 
-  // Get city by id
   const getCityById = (id: string) => cities.find(c => c.id === id);
 
   return (
     <>
       {/* Connection lines */}
-      {connections.map(([from, to], index) => {
+      {connections.map(([from, to]) => {
         const fromCity = getCityById(from);
         const toCity = getCityById(to);
         if (!fromCity || !toCity) return null;
-        
+
         return (
           <Polyline
             key={`${from}-${to}`}
@@ -129,31 +128,27 @@ function MapContent({ cities, selectedCity, onCitySelect, hoveredCity, onCityHov
           }}
         >
           <Popup>
-            <div style={{ 
-              padding: '8px', 
+            <div style={{
+              padding: '8px',
               minWidth: '150px',
               fontFamily: 'system-ui, -apple-system, sans-serif'
             }}>
-              <h4 style={{ 
-                margin: '0 0 4px 0', 
-                fontSize: '16px', 
+              <h4 style={{
+                margin: '0 0 4px 0',
+                fontSize: '16px',
                 fontWeight: 600,
                 color: '#1a1a2e'
               }}>
                 {city.name}
               </h4>
-              <p style={{ 
-                margin: '0 0 8px 0', 
-                fontSize: '12px', 
-                color: '#666' 
+              <p style={{
+                margin: '0 0 8px 0',
+                fontSize: '12px',
+                color: '#666'
               }}>
                 {city.country}
               </p>
-              <div style={{ 
-                display: 'flex', 
-                gap: '12px', 
-                fontSize: '11px' 
-              }}>
+              <div style={{ display: 'flex', gap: '12px', fontSize: '11px' }}>
                 <div>
                   <span style={{ color: '#10b981' }}>●</span> Growth: {city.growthPotential}%
                 </div>
