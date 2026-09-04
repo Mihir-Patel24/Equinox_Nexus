@@ -32,35 +32,35 @@ Unlike traditional tools that provide static recommendations, Equinox Nexus **si
 ```mermaid
 graph TD
     User([User Request]) --> SSE[FastAPI SSE Router /simulate/stream]
-    SSE --> Planner[🧠 Adaptive Planner Node]
+    SSE --> Planner["Adaptive Planner Node"]
     Planner --> Graph[LangGraph Agent Graph]
 
-    subgraph Parallel Stage — ThreadPoolExecutor
-        Graph --> Actuary[🕵️ Actuary Agent]
-        Graph --> Fiscal[👻 Fiscal Ghost Agent]
-        Graph --> Nexus[⚖️ The Nexus — RAG + Evidence Chain]
+    subgraph Parallel["Parallel Stage - ThreadPoolExecutor"]
+        Graph --> Actuary["Actuary Agent"]
+        Graph --> Fiscal["Fiscal Ghost Agent"]
+        Graph --> Nexus["The Nexus - RAG + Evidence Chain"]
     end
 
-    Actuary --> AQI[Open-Meteo AQI + Safety Indicators]
-    Fiscal --> BehaviourModel[XGBoost Behaviour Model R²=0.999]
-    Nexus --> VectorDB[ChromaDB — 26 countries / Evidence-First]
+    Actuary --> AQI["Open-Meteo AQI + Safety Indicators"]
+    Fiscal --> BehaviourModel["XGBoost Behaviour Model R2=0.999"]
+    Nexus --> VectorDB["ChromaDB - 26 countries / Evidence-First"]
 
     Parallel_Done{Merge Partial State}
     AQI --> Parallel_Done
     BehaviourModel --> Parallel_Done
     VectorDB --> Parallel_Done
 
-    Parallel_Done --> Chronos[⏳ Chronos Projection Agent]
-    Chronos --> MC[1,000-Path Monte Carlo GBM Simulation]
-    Chronos --> Prophet[Prophet FX Drift Forecast + ECB Live Rates]
+    Parallel_Done --> Chronos["Chronos Projection Agent"]
+    Chronos --> MC["1000-Path Monte Carlo GBM Simulation"]
+    Chronos --> Prophet["Prophet FX Drift Forecast + ECB Live Rates"]
 
-    MC --> DI[💼 Decision Intelligence — Groq llama-3.3-70b]
+    MC --> DI["Decision Intelligence - Groq llama-3.3-70b"]
     Prophet --> DI
 
-    DI --> XAI[📊 XAI Explainer — Factor Decomposition]
-    XAI --> Evaluator[🔬 Evaluation Framework — RAG Faithfulness + XAI Coverage]
-    Evaluator --> Twin[💾 Financial Digital Twin — PostgreSQL / SQLite]
-    Twin --> Monitor[🔄 Autonomous Monitor — Drift Detection + Auto Re-simulation]
+    DI --> XAI["XAI Explainer - Factor Decomposition"]
+    XAI --> Evaluator["Evaluation Framework - RAG Faithfulness + XAI Coverage"]
+    Evaluator --> Twin["Financial Digital Twin - PostgreSQL / SQLite"]
+    Twin --> Monitor["Autonomous Monitor - Drift Detection + Auto Re-simulation"]
     Monitor --> Twin
 ```
 
