@@ -72,7 +72,7 @@ graph TD
 |:---|:---|:---|
 | **🧠 Adaptive Planner** | LangGraph conditional routing | Inspects existing twin state and skips agents whose outputs are still fresh — reduces redundant computation by up to 60% |
 | **🕵️ The Actuary** | `httpx` + Open-Meteo API | Computes Quality-of-Life score, safety index, and real-time Air Quality Index (AQI) for target city |
-| **👻 Fiscal Ghost** | `scikit-learn` XGBoost R²=0.999 | Lifestyle-scaled expense projection — evaluates custom consumption parameters against 10,000 synthetic consumer profiles |
+| **👻 Fiscal Ghost** | `scikit-learn` XGBoost R²=0.875 | Lifestyle-scaled expense projection — evaluates custom consumption parameters against 10,000 synthetic consumer profiles |
 | **⚖️ The Nexus** | ChromaDB + `sentence-transformers` + Evidence Chain | Evidence-first compliance RAG over 26 countries — every claim carries source, confidence, freshness, and jurisdiction metadata |
 | **⏳ The Chronos** | GBM + Prophet + ECB live FX | 5-year wealth trajectory simulator — 1,000 stochastic paths, ECB-calibrated GBM volatility, Prophet FX drift |
 | **💼 Decision Intelligence** | Groq `llama-3.3-70b-versatile` | Synthesises all agent outputs into a 0–100 viability score with LLM reasoning narrative |
