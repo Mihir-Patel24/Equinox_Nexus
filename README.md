@@ -42,7 +42,7 @@ graph TD
     end
 
     Actuary --> AQI["Open-Meteo AQI + Safety Indicators"]
-    Fiscal --> BehaviourModel["XGBoost Behaviour Model R2=0.999"]
+    Fiscal --> BehaviourModel["XGBoost Behaviour Model R2=0.875"]
     Nexus --> VectorDB["ChromaDB - 26 countries / Evidence-First"]
 
     Parallel_Done{Merge Partial State}
